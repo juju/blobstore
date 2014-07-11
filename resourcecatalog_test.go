@@ -1,60 +1,59 @@
 // Copyright 2014 Canonical Ltd.
-// Licensed under the AGPLv3, see LICENCE file for details.
+// Licensed under the LGPLv3, see LICENCE file for details.
 
-package storage_test
+package blobstore_test
 
 import (
-	gittesting "github.com/juju/testing"
+	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
+	jujutxn "github.com/juju/txn"
+	txntesting "github.com/juju/txn/testing"
 	"labix.org/v2/mgo"
 	"labix.org/v2/mgo/bson"
 	"labix.org/v2/mgo/txn"
 	gc "launchpad.net/gocheck"
 
-	"github.com/juju/juju/state/storage"
-	statetxn "github.com/juju/juju/state/txn"
-	txntesting "github.com/juju/juju/state/txn/testing"
-	"github.com/juju/juju/testing"
+	"github.com/juju/blobstore"
 )
 
 var _ = gc.Suite(&resourceCatalogSuite{})
 
 type resourceCatalogSuite struct {
-	testing.BaseSuite
-	gittesting.MgoSuite
-	txnRunner  statetxn.Runner
-	rCatalog   storage.ResourceCatalog
+	testing.IsolationSuite
+	testing.MgoSuite
+	txnRunner  jujutxn.Runner
+	rCatalog   blobstore.ResourceCatalog
 	collection *mgo.Collection
 }
 
 func (s *resourceCatalogSuite) SetUpSuite(c *gc.C) {
-	s.BaseSuite.SetUpSuite(c)
+	s.IsolationSuite.SetUpSuite(c)
 	s.MgoSuite.SetUpSuite(c)
 }
 
 func (s *resourceCatalogSuite) TearDownSuite(c *gc.C) {
 	s.MgoSuite.TearDownSuite(c)
-	s.BaseSuite.TearDownSuite(c)
+	s.IsolationSuite.TearDownSuite(c)
 }
 
 func (s *resourceCatalogSuite) SetUpTest(c *gc.C) {
-	s.BaseSuite.SetUpTest(c)
+	s.IsolationSuite.SetUpTest(c)
 	s.MgoSuite.SetUpTest(c)
 	db := s.Session.DB("juju")
 	s.collection = db.C("storedResources")
-	s.txnRunner = statetxn.NewRunner(txn.NewRunner(db.C("resourceTxns")))
-	s.rCatalog = storage.NewResourceCatalog(s.collection, s.txnRunner)
+	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(db.C("resourceTxns")))
+	s.rCatalog = blobstore.NewResourceCatalog(s.collection, s.txnRunner)
 }
 
 func (s *resourceCatalogSuite) TearDownTest(c *gc.C) {
 	s.MgoSuite.TearDownTest(c)
-	s.BaseSuite.TearDownTest(c)
+	s.IsolationSuite.TearDownTest(c)
 }
 
 func (s *resourceCatalogSuite) assertPut(c *gc.C, expectedNew bool, md5hash, sha256hash string) (
 	id, path string,
 ) {
-	rh := &storage.ResourceHash{md5hash, sha256hash}
+	rh := &blobstore.ResourceHash{md5hash, sha256hash}
 	id, path, isNew, err := s.rCatalog.Put(rh, 200)
 	c.Assert(err, gc.IsNil)
 	c.Assert(isNew, gc.Equals, expectedNew)
@@ -66,11 +65,11 @@ func (s *resourceCatalogSuite) assertPut(c *gc.C, expectedNew bool, md5hash, sha
 
 func (s *resourceCatalogSuite) assertGetPending(c *gc.C, id string) {
 	r, err := s.rCatalog.Get(id)
-	c.Assert(err, gc.Equals, storage.ErrUploadPending)
+	c.Assert(err, gc.Equals, blobstore.ErrUploadPending)
 	c.Assert(r, gc.IsNil)
 }
 
-func (s *resourceCatalogSuite) asserGetUploaded(c *gc.C, id string, hash *storage.ResourceHash, length int64) {
+func (s *resourceCatalogSuite) asserGetUploaded(c *gc.C, id string, hash *blobstore.ResourceHash, length int64) {
 	r, err := s.rCatalog.Get(id)
 	c.Assert(err, gc.IsNil)
 	c.Assert(r.ResourceHash, gc.DeepEquals, *hash)
@@ -97,7 +96,7 @@ func (s *resourceCatalogSuite) TestPut(c *gc.C) {
 
 func (s *resourceCatalogSuite) TestPutLengthMismatch(c *gc.C) {
 	id, _ := s.assertPut(c, true, "md5foo", "sha256foo")
-	rh := &storage.ResourceHash{"md5foo", "sha256foo"}
+	rh := &blobstore.ResourceHash{"md5foo", "sha256foo"}
 	_, _, _, err := s.rCatalog.Put(rh, 100)
 	c.Assert(err, gc.ErrorMatches, "length mismatch in resource document 200 != 100")
 	s.assertRefCount(c, id, 1)
@@ -115,7 +114,7 @@ func (s *resourceCatalogSuite) TestGetNonExistent(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestGet(c *gc.C) {
-	rh := &storage.ResourceHash{
+	rh := &blobstore.ResourceHash{
 		MD5Hash:    "md5foo",
 		SHA256Hash: "sha256foo",
 	}
@@ -127,7 +126,7 @@ func (s *resourceCatalogSuite) TestGet(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestFindNonExistent(c *gc.C) {
-	rh := &storage.ResourceHash{
+	rh := &blobstore.ResourceHash{
 		MD5Hash:    "md5foo",
 		SHA256Hash: "sha256foo",
 	}
@@ -136,7 +135,7 @@ func (s *resourceCatalogSuite) TestFindNonExistent(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestFind(c *gc.C) {
-	rh := &storage.ResourceHash{
+	rh := &blobstore.ResourceHash{
 		MD5Hash:    "md5foo",
 		SHA256Hash: "sha256foo",
 	}
@@ -152,7 +151,7 @@ func (s *resourceCatalogSuite) TestFind(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestUploadComplete(c *gc.C) {
-	rh := &storage.ResourceHash{
+	rh := &blobstore.ResourceHash{
 		MD5Hash:    "md5foo",
 		SHA256Hash: "sha256foo",
 	}
@@ -213,7 +212,7 @@ func (s *resourceCatalogSuite) TestPutNewResourceRace(c *gc.C) {
 		func() { firstId, _ = s.assertPut(c, true, "md5foo", "sha256foo") },
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFuncs...).Check()
-	rh := &storage.ResourceHash{"md5foo", "sha256foo"}
+	rh := &blobstore.ResourceHash{"md5foo", "sha256foo"}
 	id, _, isNew, err := s.rCatalog.Put(rh, 200)
 	c.Assert(err, gc.IsNil)
 	c.Assert(id, gc.Equals, firstId)
@@ -239,7 +238,7 @@ func (s *resourceCatalogSuite) TestPutDeletedResourceRace(c *gc.C) {
 		},
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFuncs...).Check()
-	rh := &storage.ResourceHash{"md5foo", "sha256foo"}
+	rh := &blobstore.ResourceHash{"md5foo", "sha256foo"}
 	id, _, isNew, err := s.rCatalog.Put(rh, 200)
 	c.Assert(err, gc.IsNil)
 	c.Assert(isNew, jc.IsTrue)

@@ -1,7 +1,7 @@
 // Copyright 2014 Canonical Ltd.
-// Licensed under the AGPLv3, see LICENCE file for details.
+// Licensed under the LGPLv3, see LICENCE file for details.
 
-package storage
+package blobstore
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"labix.org/v2/mgo/bson"
 	"labix.org/v2/mgo/txn"
 
-	statetxn "github.com/juju/juju/state/txn"
+	jujutxn "github.com/juju/txn"
 )
 
 // ErrUploadPending is used to indicate that the underlying resource for a catalog entry
@@ -48,7 +48,7 @@ type resourceDoc struct {
 
 // resourceCatalog is a mongo backed ResourceCatalog instance.
 type resourceCatalog struct {
-	txnRunner  statetxn.Runner
+	txnRunner  jujutxn.Runner
 	collection *mgo.Collection
 }
 
@@ -82,7 +82,7 @@ func newResourceDoc(rh *ResourceHash, length int64) resourceDoc {
 
 // newResourceCatalog creates a new ResourceCatalog using the transaction runner and
 // storing resource entries in the mongo collection.
-func newResourceCatalog(collection *mgo.Collection, txnRunner statetxn.Runner) ResourceCatalog {
+func newResourceCatalog(collection *mgo.Collection, txnRunner jujutxn.Runner) ResourceCatalog {
 	return &resourceCatalog{
 		txnRunner:  txnRunner,
 		collection: collection,
@@ -194,7 +194,7 @@ func (rc *resourceCatalog) uploadCompleteOps(id string) ([]txn.Op, error) {
 		return nil, err
 	}
 	if !doc.Pending {
-		return nil, statetxn.ErrNoOperations
+		return nil, jujutxn.ErrNoOperations
 	}
 	return []txn.Op{{
 		C:      rc.collection.Name,

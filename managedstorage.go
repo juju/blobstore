@@ -1,7 +1,7 @@
 // Copyright 2014 Canonical Ltd.
-// Licensed under the AGPLv3, see LICENCE file for details.
+// Licensed under the LGPLv3, see LICENCE file for details.
 
-package storage
+package blobstore
 
 import (
 	"crypto/md5"
@@ -21,7 +21,7 @@ import (
 	"labix.org/v2/mgo/bson"
 	"labix.org/v2/mgo/txn"
 
-	statetxn "github.com/juju/juju/state/txn"
+	jujutxn "github.com/juju/txn"
 )
 
 // ManagedResource is a catalog entry for stored data.
@@ -47,7 +47,7 @@ type managedStorage struct {
 	resourceStore             ResourceStorage
 	resourceCatalog           ResourceCatalog
 	managedResourceCollection *mgo.Collection
-	txnRunner                 statetxn.Runner
+	txnRunner                 jujutxn.Runner
 
 	// The following attributes are used to manage the processing
 	// of put requests based on proof of access.
@@ -78,7 +78,7 @@ const (
 // NewManagedStorage creates a new ManagedStorage using the transaction runner,
 // storing resource entries in the specified database, and resource data in the
 // specified resource storage.
-func NewManagedStorage(db *mgo.Database, txnRunner statetxn.Runner, rs ResourceStorage) ManagedStorage {
+func NewManagedStorage(db *mgo.Database, txnRunner jujutxn.Runner, rs ResourceStorage) ManagedStorage {
 	// Ensure random number generator used to calculate checksum byte range is seeded.
 	rand.Seed(int64(time.Now().Nanosecond()))
 	ms := &managedStorage{

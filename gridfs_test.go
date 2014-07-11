@@ -1,7 +1,7 @@
 // Copyright 2014 Canonical Ltd.
-// Licensed under the AGPLv3, see LICENCE file for details.
+// Licensed under the LGPLv3, see LICENCE file for details.
 
-package storage_test
+package blobstore_test
 
 import (
 	"crypto/md5"
@@ -9,43 +9,42 @@ import (
 	"io/ioutil"
 	"strings"
 
-	gitjujutesting "github.com/juju/testing"
+	"github.com/juju/testing"
 	gc "launchpad.net/gocheck"
 
-	"github.com/juju/juju/state/storage"
-	"github.com/juju/juju/testing"
+	"github.com/juju/blobstore"
 )
 
 var _ = gc.Suite(&gridfsSuite{})
 
 type gridfsSuite struct {
-	testing.BaseSuite
-	gitjujutesting.MgoSuite
-	stor storage.ResourceStorage
+	testing.IsolationSuite
+	testing.MgoSuite
+	stor blobstore.ResourceStorage
 }
 
 func (s *gridfsSuite) SetUpSuite(c *gc.C) {
-	s.BaseSuite.SetUpSuite(c)
+	s.IsolationSuite.SetUpSuite(c)
 	s.MgoSuite.SetUpSuite(c)
 }
 
 func (s *gridfsSuite) TearDownSuite(c *gc.C) {
 	s.MgoSuite.TearDownSuite(c)
-	s.BaseSuite.TearDownSuite(c)
+	s.IsolationSuite.TearDownSuite(c)
 }
 
 func (s *gridfsSuite) SetUpTest(c *gc.C) {
-	s.BaseSuite.SetUpTest(c)
+	s.IsolationSuite.SetUpTest(c)
 	s.MgoSuite.SetUpTest(c)
-	s.stor = storage.NewGridFS("juju", "test", s.Session)
+	s.stor = blobstore.NewGridFS("juju", "test", s.Session)
 }
 
 func (s *gridfsSuite) TearDownTest(c *gc.C) {
 	s.MgoSuite.TearDownTest(c)
-	s.BaseSuite.TearDownTest(c)
+	s.IsolationSuite.TearDownTest(c)
 }
 
-func assertPut(c *gc.C, stor storage.ResourceStorage, path, data string) {
+func assertPut(c *gc.C, stor blobstore.ResourceStorage, path, data string) {
 	r := strings.NewReader(data)
 	checksum, err := stor.Put(path, r, int64(len(data)))
 	c.Assert(err, gc.IsNil)
@@ -65,7 +64,7 @@ func (s *gridfsSuite) TestPutSameFileOverwrites(c *gc.C) {
 	assertPut(c, s.stor, "/path/to/file", "hello again")
 }
 
-func assertGet(c *gc.C, stor storage.ResourceStorage, path, expected string) {
+func assertGet(c *gc.C, stor blobstore.ResourceStorage, path, expected string) {
 	r, err := stor.Get(path)
 	c.Assert(err, gc.IsNil)
 	defer r.Close()
@@ -102,7 +101,7 @@ func (s *gridfsSuite) TestRemoveNonExistent(c *gc.C) {
 }
 
 func (s *gridfsSuite) TestNamespaceSeparation(c *gc.C) {
-	anotherStor := storage.NewGridFS("juju", "another", s.Session)
+	anotherStor := blobstore.NewGridFS("juju", "another", s.Session)
 	path := "/path/to/file"
 	assertPut(c, anotherStor, path, "hello world")
 	_, err := s.stor.Get(path)
@@ -110,7 +109,7 @@ func (s *gridfsSuite) TestNamespaceSeparation(c *gc.C) {
 }
 
 func (s *gridfsSuite) TestNamespaceSeparationRemove(c *gc.C) {
-	anotherStor := storage.NewGridFS("juju", "another", s.Session)
+	anotherStor := blobstore.NewGridFS("juju", "another", s.Session)
 	path := "/path/to/file"
 	assertPut(c, s.stor, path, "hello world")
 	assertPut(c, anotherStor, path, "hello again")
