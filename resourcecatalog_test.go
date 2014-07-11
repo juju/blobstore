@@ -42,6 +42,8 @@ func (s *resourceCatalogSuite) SetUpTest(c *gc.C) {
 	db := s.Session.DB("blobstore")
 	s.collection = db.C("storedResources")
 	s.rCatalog = blobstore.NewResourceCatalog(db)
+
+	// For testing, we need to ensure there's a single txnRunner for all operations.
 	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(db.C("txns")))
 	txnRunnerFunc := func(db *mgo.Database) jujutxn.Runner {
 		return s.txnRunner

@@ -54,6 +54,8 @@ func (s *managedStorageSuite) SetUpTest(c *gc.C) {
 	s.db = s.Session.DB("blobstore")
 	s.resourceStorage = blobstore.NewGridFS("storage", "test", s.Session)
 	s.managedStorage = blobstore.NewManagedStorage(s.db, s.resourceStorage)
+
+	// For testing, we need to ensure there's a single txnRunner for all operations.
 	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(s.db.C("txns")))
 	txnRunnerFunc := func(db *mgo.Database) jujutxn.Runner {
 		return s.txnRunner
