@@ -36,7 +36,6 @@ type managedStorageSuite struct {
 	managedStorage  blobstore.ManagedStorage
 	db              *mgo.Database
 	resourceStorage blobstore.ResourceStorage
-	collection      *mgo.Collection
 }
 
 func (s *managedStorageSuite) SetUpSuite(c *gc.C) {
@@ -52,10 +51,14 @@ func (s *managedStorageSuite) TearDownSuite(c *gc.C) {
 func (s *managedStorageSuite) SetUpTest(c *gc.C) {
 	s.IsolationSuite.SetUpTest(c)
 	s.MgoSuite.SetUpTest(c)
-	s.db = s.Session.DB("juju")
-	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(s.db.C("txns")))
+	s.db = s.Session.DB("blobstore")
 	s.resourceStorage = blobstore.NewGridFS("storage", "test", s.Session)
-	s.managedStorage = blobstore.NewManagedStorage(s.db, s.txnRunner, s.resourceStorage)
+	s.managedStorage = blobstore.NewManagedStorage(s.db, s.resourceStorage)
+	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(s.db.C("txns")))
+	txnRunnerFunc := func(db *mgo.Database) jujutxn.Runner {
+		return s.txnRunner
+	}
+	s.PatchValue(blobstore.TxnRunner, txnRunnerFunc)
 }
 
 func (s *managedStorageSuite) TearDownTest(c *gc.C) {
