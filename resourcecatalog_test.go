@@ -39,10 +39,16 @@ func (s *resourceCatalogSuite) TearDownSuite(c *gc.C) {
 func (s *resourceCatalogSuite) SetUpTest(c *gc.C) {
 	s.IsolationSuite.SetUpTest(c)
 	s.MgoSuite.SetUpTest(c)
-	db := s.Session.DB("juju")
+	db := s.Session.DB("blobstore")
 	s.collection = db.C("storedResources")
-	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(db.C("resourceTxns")))
-	s.rCatalog = blobstore.NewResourceCatalog(s.collection, s.txnRunner)
+	s.rCatalog = blobstore.NewResourceCatalog(db)
+
+	// For testing, we need to ensure there's a single txnRunner for all operations.
+	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(db.C("txns")))
+	txnRunnerFunc := func(db *mgo.Database) jujutxn.Runner {
+		return s.txnRunner
+	}
+	s.PatchValue(blobstore.TxnRunner, txnRunnerFunc)
 }
 
 func (s *resourceCatalogSuite) TearDownTest(c *gc.C) {

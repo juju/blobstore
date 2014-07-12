@@ -47,7 +47,7 @@ type managedStorage struct {
 	resourceStore             ResourceStorage
 	resourceCatalog           ResourceCatalog
 	managedResourceCollection *mgo.Collection
-	txnRunner                 jujutxn.Runner
+	db                        *mgo.Database
 
 	// The following attributes are used to manage the processing
 	// of put requests based on proof of access.
@@ -71,20 +71,21 @@ func newManagedResourceDoc(r ManagedResource, resourceId string) managedResource
 }
 
 const (
-	resourceCatalogCollection = "storedResources"
+	// managedResourceCollection is the name of the collection
+	// which stores the managedResourceDoc records.
 	managedResourceCollection = "managedStoredResources"
 )
 
 // NewManagedStorage creates a new ManagedStorage using the transaction runner,
 // storing resource entries in the specified database, and resource data in the
 // specified resource storage.
-func NewManagedStorage(db *mgo.Database, txnRunner jujutxn.Runner, rs ResourceStorage) ManagedStorage {
+func NewManagedStorage(db *mgo.Database, rs ResourceStorage) ManagedStorage {
 	// Ensure random number generator used to calculate checksum byte range is seeded.
 	rand.Seed(int64(time.Now().Nanosecond()))
 	ms := &managedStorage{
 		resourceStore:   rs,
-		resourceCatalog: newResourceCatalog(db.C(resourceCatalogCollection), txnRunner),
-		txnRunner:       txnRunner,
+		resourceCatalog: newResourceCatalog(db),
+		db:              db,
 		queuedRequests:  make(map[int64]PutRequest),
 	}
 	ms.managedResourceCollection = db.C(managedResourceCollection)
@@ -273,6 +274,11 @@ func (ms *managedStorage) putResourceReference(envUUID, managedPath, resourceId 
 	return nil
 }
 
+// Override for testing.
+var txnRunner = func(db *mgo.Database) jujutxn.Runner {
+	return jujutxn.NewRunner(txn.NewRunner(db.C("txns")))
+}
+
 // putManagedResource saves the managed resource record and returns the resource id of any
 // existing record with the same path.
 func (ms *managedStorage) putManagedResource(managedResource ManagedResource, resourceId string) (
@@ -284,7 +290,8 @@ func (ms *managedStorage) putManagedResource(managedResource ManagedResource, re
 		return addManagedResourceOps, err
 	}
 
-	if err = ms.txnRunner.Run(buildTxn); err != nil {
+	txnRunner := txnRunner(ms.db)
+	if err = txnRunner.Run(buildTxn); err != nil {
 		return "", errors.Annotate(err, "cannot update managed resource catalog")
 	}
 	return existingResourceId, nil
@@ -310,7 +317,8 @@ func (ms *managedStorage) RemoveForEnvironment(envUUID, path string) (err error)
 		resourceId, removeManagedResourceOps, err = ms.removeResourceTxn(managedPath)
 		return removeManagedResourceOps, err
 	}
-	if err := ms.txnRunner.Run(buildTxn); err != nil {
+	txnRunner := txnRunner(ms.db)
+	if err := txnRunner.Run(buildTxn); err != nil {
 		if err == mgo.ErrNotFound {
 			return errors.NotFoundf("resource at path %q", managedPath)
 		}

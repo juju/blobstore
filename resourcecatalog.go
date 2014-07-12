@@ -48,7 +48,6 @@ type resourceDoc struct {
 
 // resourceCatalog is a mongo backed ResourceCatalog instance.
 type resourceCatalog struct {
-	txnRunner  jujutxn.Runner
 	collection *mgo.Collection
 }
 
@@ -80,12 +79,17 @@ func newResourceDoc(rh *ResourceHash, length int64) resourceDoc {
 	}
 }
 
-// newResourceCatalog creates a new ResourceCatalog using the transaction runner and
-// storing resource entries in the mongo collection.
-func newResourceCatalog(collection *mgo.Collection, txnRunner jujutxn.Runner) ResourceCatalog {
+const (
+	// resourceCatalogCollection is the name of the collection
+	// which stores the resourceDoc records.
+	resourceCatalogCollection = "storedResources"
+)
+
+// newResourceCatalog creates a new ResourceCatalog
+// storing resource entries in the mongo database.
+func newResourceCatalog(db *mgo.Database) ResourceCatalog {
 	return &resourceCatalog{
-		txnRunner:  txnRunner,
-		collection: collection,
+		collection: db.C(resourceCatalogCollection),
 	}
 }
 
@@ -123,7 +127,8 @@ func (rc *resourceCatalog) Put(rh *ResourceHash, length int64) (id, path string,
 		id, path, isNew, ops, err = rc.resourceIncRefOps(rh, length)
 		return ops, err
 	}
-	if err = rc.txnRunner.Run(buildTxn); err != nil {
+	txnRunner := txnRunner(rc.collection.Database)
+	if err = txnRunner.Run(buildTxn); err != nil {
 		return "", "", false, err
 	}
 
@@ -138,7 +143,8 @@ func (rc *resourceCatalog) UploadComplete(id string) error {
 		}
 		return ops, err
 	}
-	return rc.txnRunner.Run(buildTxn)
+	txnRunner := txnRunner(rc.collection.Database)
+	return txnRunner.Run(buildTxn)
 }
 
 // Remove is defined on the ResourceCatalog interface.
@@ -149,7 +155,8 @@ func (rc *resourceCatalog) Remove(id string) (wasDeleted bool, path string, err 
 		}
 		return ops, err
 	}
-	return wasDeleted, path, rc.txnRunner.Run(buildTxn)
+	txnRunner := txnRunner(rc.collection.Database)
+	return wasDeleted, path, txnRunner.Run(buildTxn)
 }
 
 func checksumMatch(rh *ResourceHash) bson.D {
