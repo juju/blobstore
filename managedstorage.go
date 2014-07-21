@@ -276,7 +276,7 @@ func (ms *managedStorage) putResourceReference(envUUID, managedPath, resourceId 
 
 // Override for testing.
 var txnRunner = func(db *mgo.Database) jujutxn.Runner {
-	return jujutxn.NewRunner(txn.NewRunner(db.C("txns")))
+	return jujutxn.NewRunner(jujutxn.RunnerParams{Database: db})
 }
 
 // putManagedResource saves the managed resource record and returns the resource id of any
