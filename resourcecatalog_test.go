@@ -6,11 +6,10 @@ package blobstore_test
 import (
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
-	jujutxn "github.com/juju/txn"
+	"github.com/juju/txn"
 	txntesting "github.com/juju/txn/testing"
 	"labix.org/v2/mgo"
 	"labix.org/v2/mgo/bson"
-	"labix.org/v2/mgo/txn"
 	gc "launchpad.net/gocheck"
 
 	"github.com/juju/blobstore"
@@ -21,7 +20,7 @@ var _ = gc.Suite(&resourceCatalogSuite{})
 type resourceCatalogSuite struct {
 	testing.IsolationSuite
 	testing.MgoSuite
-	txnRunner  jujutxn.Runner
+	txnRunner  txn.Runner
 	rCatalog   blobstore.ResourceCatalog
 	collection *mgo.Collection
 }
@@ -44,8 +43,8 @@ func (s *resourceCatalogSuite) SetUpTest(c *gc.C) {
 	s.rCatalog = blobstore.NewResourceCatalog(db)
 
 	// For testing, we need to ensure there's a single txnRunner for all operations.
-	s.txnRunner = jujutxn.NewRunner(txn.NewRunner(db.C("txns")))
-	txnRunnerFunc := func(db *mgo.Database) jujutxn.Runner {
+	s.txnRunner = txn.NewRunner(txn.RunnerParams{Database: db})
+	txnRunnerFunc := func(db *mgo.Database) txn.Runner {
 		return s.txnRunner
 	}
 	s.PatchValue(blobstore.TxnRunner, txnRunnerFunc)
