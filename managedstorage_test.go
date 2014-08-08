@@ -229,6 +229,20 @@ func (s *managedStorageSuite) TestPutManagedResourceFail(c *gc.C) {
 	c.Assert(err, gc.ErrorMatches, ".*not found")
 }
 
+func (s *managedStorageSuite) TestPutForEnvironmentAndCheckHash(c *gc.C) {
+	blob := []byte("data")
+	rdr := bytes.NewReader(blob)
+	var checkHash blobstore.ResourceHash
+	checkHash.MD5Hash, checkHash.SHA256Hash = calculateCheckSums(c, 0, 5, []byte("wrong"))
+	err := s.managedStorage.PutForEnvironmentAndCheckHash("env", "/some/path", rdr, int64(len(blob)), checkHash)
+	c.Assert(err, gc.ErrorMatches, "hash mismatch")
+
+	rdr.Seek(0, 0)
+	checkHash.MD5Hash, checkHash.SHA256Hash = calculateCheckSums(c, 0, int64(len(blob)), blob)
+	err = s.managedStorage.PutForEnvironmentAndCheckHash("env", "/some/path", rdr, int64(len(blob)), checkHash)
+	c.Assert(err, gc.IsNil)
+}
+
 func (s *managedStorageSuite) assertGet(c *gc.C, path string, blob []byte) {
 	r, length, err := s.managedStorage.GetForEnvironment("env", path)
 	c.Assert(err, gc.IsNil)

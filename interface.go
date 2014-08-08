@@ -57,6 +57,10 @@ type ManagedStorage interface {
 	// PutForEnvironment stores data from reader at path, namespaced to the environment.
 	PutForEnvironment(envUUID, path string, r io.Reader, length int64) error
 
+	// PutForEnvironmentAndCheckHash is the same as PutForEnvironment
+	// except that it also checks that the content matches the provided hash.
+	PutForEnvironmentAndCheckHash(envUUID, path string, r io.Reader, length int64, checkHash ResourceHash) error
+
 	// RemoveForEnvironment deletes data at path, namespaced to the environment.
 	RemoveForEnvironment(envUUID, path string) error
 
