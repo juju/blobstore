@@ -217,7 +217,7 @@ func (ms *managedStorage) PutForEnvironment(envUUID, path string, r io.Reader, l
 	return ms.putForEnvironment(envUUID, path, r, length, nil)
 }
 
-// putForEnvironment is the internal implementation of both the above
+// putForEnvironment is the internal implementation for both the above
 // methods. It checks the hash if checkHash is non-nil.
 func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, length int64, checkHash *ResourceHash) (putError error) {
 	dataFile, rh, err := ms.preprocessUpload(r, length)
