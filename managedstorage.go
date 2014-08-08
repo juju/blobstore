@@ -120,7 +120,7 @@ func (ms *managedStorage) resourceStoragePath(envUUID, user, resourcePath string
 // calculating the md5 and sha256 checksums.
 // The caller is expected to remove the temporary file if and only if we return a nil error.
 func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
-	f *os.File, md5hashHex, sha256hashHex string, err error,
+	f *os.File, rh *ResourceHash, err error,
 ) {
 	sha256hash := sha256.New()
 	md5hash := md5.New()
@@ -128,7 +128,7 @@ func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
 	rdr := io.TeeReader(io.TeeReader(r, sha256hash), md5hash)
 	f, err = ioutil.TempFile(os.TempDir(), "juju-resource")
 	if err != nil {
-		return nil, "", "", err
+		return nil, nil, err
 	}
 	// Add a cleanup function to remove the data file if we exit with an error.
 	defer func() {
@@ -139,16 +139,18 @@ func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
 	// Write the data to a temp file.
 	_, err = io.CopyN(f, rdr, length)
 	if err != nil {
-		return nil, "", "", err
+		return nil, nil, err
 	}
 	// Reset the file so when we return it, it can be read from to get the data.
 	_, err = f.Seek(0, 0)
 	if err != nil {
-		return nil, "", "", err
+		return nil, nil, err
 	}
-	md5hashHex = fmt.Sprintf("%x", md5hash.Sum(nil))
-	sha256hashHex = fmt.Sprintf("%x", sha256hash.Sum(nil))
-	return f, md5hashHex, sha256hashHex, nil
+	rh = &ResourceHash{
+		MD5Hash:    fmt.Sprintf("%x", md5hash.Sum(nil)),
+		SHA256Hash: fmt.Sprintf("%x", sha256hash.Sum(nil)),
+	}
+	return f, rh, nil
 }
 
 // GetForEnvironment is defined on the ManagedStorage interface.
@@ -205,17 +207,27 @@ func cleanupResource(rs ResourceStorage, resourcePath string, err *error) {
 	}
 }
 
+// PutForEnvironmentAndCheckHash is defined on the ManagedStorage interface.
+func (ms *managedStorage) PutForEnvironmentAndCheckHash(envUUID, path string, r io.Reader, length int64, checkHash ResourceHash) error {
+	return ms.putForEnvironment(envUUID, path, r, length, &checkHash)
+}
+
 // PutForEnvironment is defined on the ManagedStorage interface.
-func (ms *managedStorage) PutForEnvironment(envUUID, path string, r io.Reader, length int64) (putError error) {
-	dataFile, md5hash, sha256hash, err := ms.preprocessUpload(r, length)
+func (ms *managedStorage) PutForEnvironment(envUUID, path string, r io.Reader, length int64) error {
+	return ms.putForEnvironment(envUUID, path, r, length, nil)
+}
+
+// putForEnvironment is the internal implementation of both the above
+// methods. It checks the hash if checkHash is non-nil.
+func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, length int64, checkHash *ResourceHash) (putError error) {
+	dataFile, rh, err := ms.preprocessUpload(r, length)
 	if err != nil {
 		return errors.Annotate(err, "cannot calculate data checksums")
 	}
 	// Remove the data file when we're done.
 	defer os.Remove(dataFile.Name())
-	rh := &ResourceHash{
-		MD5Hash:    md5hash,
-		SHA256Hash: sha256hash,
+	if checkHash != nil && *checkHash != *rh {
+		return errors.New("hash mismatch")
 	}
 	resourceId, resourcePath, isNew, err := ms.resourceCatalog.Put(rh, length)
 	if err != nil {
