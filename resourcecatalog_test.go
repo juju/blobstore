@@ -55,11 +55,10 @@ func (s *resourceCatalogSuite) TearDownTest(c *gc.C) {
 	s.IsolationSuite.TearDownTest(c)
 }
 
-func (s *resourceCatalogSuite) assertPut(c *gc.C, expectedNew bool, md5hash, sha256hash string) (
+func (s *resourceCatalogSuite) assertPut(c *gc.C, expectedNew bool, sha384Hash string) (
 	id, path string,
 ) {
-	rh := &blobstore.ResourceHash{md5hash, sha256hash}
-	id, path, isNew, err := s.rCatalog.Put(rh, 200)
+	id, path, isNew, err := s.rCatalog.Put(sha384Hash, 200)
 	c.Assert(err, gc.IsNil)
 	c.Assert(isNew, gc.Equals, expectedNew)
 	c.Assert(id, gc.Not(gc.Equals), "")
@@ -74,10 +73,10 @@ func (s *resourceCatalogSuite) assertGetPending(c *gc.C, id string) {
 	c.Assert(r, gc.IsNil)
 }
 
-func (s *resourceCatalogSuite) asserGetUploaded(c *gc.C, id string, hash *blobstore.ResourceHash, length int64) {
+func (s *resourceCatalogSuite) asserGetUploaded(c *gc.C, id string, hash string, length int64) {
 	r, err := s.rCatalog.Get(id)
 	c.Assert(err, gc.IsNil)
-	c.Assert(r.ResourceHash, gc.DeepEquals, *hash)
+	c.Assert(r.SHA384Hash, gc.DeepEquals, hash)
 	c.Assert(r.Length, gc.Equals, length)
 	c.Assert(r.Path, gc.Not(gc.Equals), "")
 }
@@ -95,21 +94,20 @@ func (s *resourceCatalogSuite) assertRefCount(c *gc.C, id string, expected int64
 }
 
 func (s *resourceCatalogSuite) TestPut(c *gc.C) {
-	id, _ := s.assertPut(c, true, "md5foo", "sha256foo")
+	id, _ := s.assertPut(c, true, "sha384foo")
 	s.assertRefCount(c, id, 1)
 }
 
 func (s *resourceCatalogSuite) TestPutLengthMismatch(c *gc.C) {
-	id, _ := s.assertPut(c, true, "md5foo", "sha256foo")
-	rh := &blobstore.ResourceHash{"md5foo", "sha256foo"}
-	_, _, _, err := s.rCatalog.Put(rh, 100)
+	id, _ := s.assertPut(c, true, "sha384foo")
+	_, _, _, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.ErrorMatches, "length mismatch in resource document 200 != 100")
 	s.assertRefCount(c, id, 1)
 }
 
 func (s *resourceCatalogSuite) TestPutSameHashesIncRefCount(c *gc.C) {
-	id, _ := s.assertPut(c, true, "md5foo", "sha256foo")
-	s.assertPut(c, false, "md5foo", "sha256foo")
+	id, _ := s.assertPut(c, true, "sha384foo")
+	s.assertPut(c, false, "sha384foo")
 	s.assertRefCount(c, id, 2)
 }
 
@@ -119,11 +117,7 @@ func (s *resourceCatalogSuite) TestGetNonExistent(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestGet(c *gc.C) {
-	rh := &blobstore.ResourceHash{
-		MD5Hash:    "md5foo",
-		SHA256Hash: "sha256foo",
-	}
-	id, path, isNew, err := s.rCatalog.Put(rh, 100)
+	id, path, isNew, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.IsNil)
 	c.Assert(isNew, jc.IsTrue)
 	c.Assert(path, gc.Not(gc.Equals), "")
@@ -131,49 +125,37 @@ func (s *resourceCatalogSuite) TestGet(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestFindNonExistent(c *gc.C) {
-	rh := &blobstore.ResourceHash{
-		MD5Hash:    "md5foo",
-		SHA256Hash: "sha256foo",
-	}
-	_, err := s.rCatalog.Find(rh)
-	c.Assert(err, gc.ErrorMatches, `resource with md5=.*, sha256=.* not found`)
+	_, err := s.rCatalog.Find("sha384foo")
+	c.Assert(err, gc.ErrorMatches, `resource with sha384=.* not found`)
 }
 
 func (s *resourceCatalogSuite) TestFind(c *gc.C) {
-	rh := &blobstore.ResourceHash{
-		MD5Hash:    "md5foo",
-		SHA256Hash: "sha256foo",
-	}
-	id, path, isNew, err := s.rCatalog.Put(rh, 100)
+	id, path, isNew, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.IsNil)
 	c.Assert(isNew, jc.IsTrue)
 	c.Assert(path, gc.Not(gc.Equals), "")
 	s.rCatalog.UploadComplete(id)
 	c.Assert(err, gc.IsNil)
-	foundId, err := s.rCatalog.Find(rh)
+	foundId, err := s.rCatalog.Find("sha384foo")
 	c.Assert(err, gc.IsNil)
 	c.Assert(foundId, gc.Equals, id)
 }
 
 func (s *resourceCatalogSuite) TestUploadComplete(c *gc.C) {
-	rh := &blobstore.ResourceHash{
-		MD5Hash:    "md5foo",
-		SHA256Hash: "sha256foo",
-	}
-	id, _, _, err := s.rCatalog.Put(rh, 100)
+	id, _, _, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.IsNil)
 	s.assertGetPending(c, id)
 	s.rCatalog.UploadComplete(id)
 	c.Assert(err, gc.IsNil)
-	s.asserGetUploaded(c, id, rh, 100)
+	s.asserGetUploaded(c, id, "sha384foo", 100)
 	// A second call works just fine.
 	s.rCatalog.UploadComplete(id)
 	c.Assert(err, gc.IsNil)
-	s.asserGetUploaded(c, id, rh, 100)
+	s.asserGetUploaded(c, id, "sha384foo", 100)
 }
 
 func (s *resourceCatalogSuite) TestRemoveOnlyRecord(c *gc.C) {
-	id, path := s.assertPut(c, true, "md5foo", "sha256foo")
+	id, path := s.assertPut(c, true, "sha384foo")
 	wasDeleted, removedPath, err := s.rCatalog.Remove(id)
 	c.Assert(err, gc.IsNil)
 	c.Assert(wasDeleted, jc.IsTrue)
@@ -183,8 +165,8 @@ func (s *resourceCatalogSuite) TestRemoveOnlyRecord(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestRemoveDecRefCount(c *gc.C) {
-	id, _ := s.assertPut(c, true, "md5foo", "sha256foo")
-	s.assertPut(c, false, "md5foo", "sha256foo")
+	id, _ := s.assertPut(c, true, "sha384foo")
+	s.assertPut(c, false, "sha384foo")
 	s.assertRefCount(c, id, 2)
 	wasDeleted, _, err := s.rCatalog.Remove(id)
 	c.Assert(err, gc.IsNil)
@@ -194,8 +176,8 @@ func (s *resourceCatalogSuite) TestRemoveDecRefCount(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestRemoveLastCopy(c *gc.C) {
-	id, _ := s.assertPut(c, true, "md5foo", "sha256foo")
-	s.assertPut(c, false, "md5foo", "sha256foo")
+	id, _ := s.assertPut(c, true, "sha384foo")
+	s.assertPut(c, false, "sha384foo")
 	s.assertRefCount(c, id, 2)
 	_, _, err := s.rCatalog.Remove(id)
 	c.Assert(err, gc.IsNil)
@@ -214,11 +196,10 @@ func (s *resourceCatalogSuite) TestRemoveNonExistent(c *gc.C) {
 func (s *resourceCatalogSuite) TestPutNewResourceRace(c *gc.C) {
 	var firstId string
 	beforeFuncs := []func(){
-		func() { firstId, _ = s.assertPut(c, true, "md5foo", "sha256foo") },
+		func() { firstId, _ = s.assertPut(c, true, "sha384foo") },
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFuncs...).Check()
-	rh := &blobstore.ResourceHash{"md5foo", "sha256foo"}
-	id, _, isNew, err := s.rCatalog.Put(rh, 200)
+	id, _, isNew, err := s.rCatalog.Put("sha384foo", 200)
 	c.Assert(err, gc.IsNil)
 	c.Assert(id, gc.Equals, firstId)
 	c.Assert(isNew, jc.IsFalse)
@@ -227,13 +208,12 @@ func (s *resourceCatalogSuite) TestPutNewResourceRace(c *gc.C) {
 	r, err := s.rCatalog.Get(id)
 	c.Assert(err, gc.IsNil)
 	s.assertRefCount(c, id, 2)
-	c.Assert(r.MD5Hash, gc.Equals, "md5foo")
-	c.Assert(r.SHA256Hash, gc.Equals, "sha256foo")
+	c.Assert(r.SHA384Hash, gc.Equals, "sha384foo")
 	c.Assert(int(r.Length), gc.Equals, 200)
 }
 
 func (s *resourceCatalogSuite) TestPutDeletedResourceRace(c *gc.C) {
-	firstId, _ := s.assertPut(c, true, "md5foo", "sha256foo")
+	firstId, _ := s.assertPut(c, true, "sha384foo")
 	err := s.rCatalog.UploadComplete(firstId)
 	c.Assert(err, gc.IsNil)
 	beforeFuncs := []func(){
@@ -243,8 +223,7 @@ func (s *resourceCatalogSuite) TestPutDeletedResourceRace(c *gc.C) {
 		},
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFuncs...).Check()
-	rh := &blobstore.ResourceHash{"md5foo", "sha256foo"}
-	id, _, isNew, err := s.rCatalog.Put(rh, 200)
+	id, _, isNew, err := s.rCatalog.Put("sha384foo", 200)
 	c.Assert(err, gc.IsNil)
 	c.Assert(isNew, jc.IsTrue)
 	c.Assert(firstId, gc.Equals, id)
@@ -253,14 +232,13 @@ func (s *resourceCatalogSuite) TestPutDeletedResourceRace(c *gc.C) {
 	r, err := s.rCatalog.Get(id)
 	c.Assert(err, gc.IsNil)
 	s.assertRefCount(c, id, 1)
-	c.Assert(r.MD5Hash, gc.Equals, "md5foo")
-	c.Assert(r.SHA256Hash, gc.Equals, "sha256foo")
+	c.Assert(r.SHA384Hash, gc.Equals, "sha384foo")
 	c.Assert(r.Length, gc.Equals, int64(200))
 }
 
 func (s *resourceCatalogSuite) TestDeleteResourceRace(c *gc.C) {
-	id, _ := s.assertPut(c, true, "md5foo", "sha256foo")
-	s.assertPut(c, false, "md5foo", "sha256foo")
+	id, _ := s.assertPut(c, true, "sha384foo")
+	s.assertPut(c, false, "sha384foo")
 	beforeFuncs := []func(){
 		func() {
 			_, _, err := s.rCatalog.Remove(id)

@@ -4,8 +4,7 @@
 package blobstore
 
 import (
-	"crypto/md5"
-	"crypto/sha256"
+	"crypto/sha512"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -117,18 +116,17 @@ func (ms *managedStorage) resourceStoragePath(envUUID, user, resourcePath string
 }
 
 // preprocessUpload pulls in all the data from the reader, storing it in a temp file and
-// calculating the md5 and sha256 checksums.
+// calculating the sha384 checksum.
 // The caller is expected to remove the temporary file if and only if we return a nil error.
 func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
-	f *os.File, rh *ResourceHash, err error,
+	f *os.File, hash string, err error,
 ) {
-	sha256hash := sha256.New()
-	md5hash := md5.New()
-	// Set up a chain of readers to pull in the data and calculate the checksums.
-	rdr := io.TeeReader(io.TeeReader(r, sha256hash), md5hash)
+	sha384hash := sha512.New384()
+	// Set up a chain of readers to pull in the data and calculate the checksum.
+	rdr := io.TeeReader(r, sha384hash)
 	f, err = ioutil.TempFile(os.TempDir(), "juju-resource")
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 	// Add a cleanup function to remove the data file if we exit with an error.
 	defer func() {
@@ -139,18 +137,14 @@ func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
 	// Write the data to a temp file.
 	_, err = io.CopyN(f, rdr, length)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 	// Reset the file so when we return it, it can be read from to get the data.
 	_, err = f.Seek(0, 0)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
-	rh = &ResourceHash{
-		MD5Hash:    fmt.Sprintf("%x", md5hash.Sum(nil)),
-		SHA256Hash: fmt.Sprintf("%x", sha256hash.Sum(nil)),
-	}
-	return f, rh, nil
+	return f, fmt.Sprintf("%x", sha384hash.Sum(nil)), nil
 }
 
 // GetForEnvironment is defined on the ManagedStorage interface.
@@ -208,28 +202,28 @@ func cleanupResource(rs ResourceStorage, resourcePath string, err *error) {
 }
 
 // PutForEnvironmentAndCheckHash is defined on the ManagedStorage interface.
-func (ms *managedStorage) PutForEnvironmentAndCheckHash(envUUID, path string, r io.Reader, length int64, checkHash ResourceHash) error {
-	return ms.putForEnvironment(envUUID, path, r, length, &checkHash)
+func (ms *managedStorage) PutForEnvironmentAndCheckHash(envUUID, path string, r io.Reader, length int64, checkHash string) error {
+	return ms.putForEnvironment(envUUID, path, r, length, checkHash)
 }
 
 // PutForEnvironment is defined on the ManagedStorage interface.
 func (ms *managedStorage) PutForEnvironment(envUUID, path string, r io.Reader, length int64) error {
-	return ms.putForEnvironment(envUUID, path, r, length, nil)
+	return ms.putForEnvironment(envUUID, path, r, length, "")
 }
 
 // putForEnvironment is the internal implementation for both the above
 // methods. It checks the hash if checkHash is non-nil.
-func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, length int64, checkHash *ResourceHash) (putError error) {
-	dataFile, rh, err := ms.preprocessUpload(r, length)
+func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, length int64, checkHash string) (putError error) {
+	dataFile, hash, err := ms.preprocessUpload(r, length)
 	if err != nil {
 		return errors.Annotate(err, "cannot calculate data checksums")
 	}
 	// Remove the data file when we're done.
 	defer os.Remove(dataFile.Name())
-	if checkHash != nil && *checkHash != *rh {
+	if checkHash != "" && checkHash != hash {
 		return errors.New("hash mismatch")
 	}
-	resourceId, resourcePath, isNew, err := ms.resourceCatalog.Put(rh, length)
+	resourceId, resourcePath, isNew, err := ms.resourceCatalog.Put(hash, length)
 	if err != nil {
 		return errors.Annotate(err, "cannot update resource catalog")
 	}
@@ -400,18 +394,18 @@ var (
 
 // putResponse is used when responding to a put request.
 type putResponse struct {
-	requestId int64
-	ResourceHash
+	requestId  int64
+	sha384Hash string
 }
 
 // PutRequest is to record a request to put a file pending proof of access.
 type PutRequest struct {
-	expiryTime     time.Time
-	resourceId     string
-	envUUID        string
-	user           string
-	path           string
-	expectedHashes ResourceHash
+	expiryTime   time.Time
+	resourceId   string
+	envUUID      string
+	user         string
+	path         string
+	expectedHash string
 }
 
 // RequestResponse is returned by a put request to inform the caller
@@ -423,22 +417,19 @@ type RequestResponse struct {
 }
 
 // NewPutResponse creates a new putResponse for the given requestId and hashes.
-func NewPutResponse(requestId int64, md5Hash, sha256Hash string) putResponse {
+func NewPutResponse(requestId int64, sha384hash string) putResponse {
 	return putResponse{
-		requestId: requestId,
-		ResourceHash: ResourceHash{
-			MD5Hash:    md5Hash,
-			SHA256Hash: sha256Hash,
-		},
+		requestId:  requestId,
+		sha384Hash: sha384hash,
 	}
 }
 
-// calculateExpectedHashes picks a random range of bytes from the data cataloged by resourceId
-// and calculates checksums of that data.
-func (ms *managedStorage) calculateExpectedHashes(resourceId, path string) (*ResourceHash, int64, int64, error) {
+// calculateExpectedHash picks a random range of bytes from the data cataloged by resourceId
+// and calculates a sha384 checksum of that data.
+func (ms *managedStorage) calculateExpectedHash(resourceId, path string) (string, int64, int64, error) {
 	rdr, length, err := ms.getResource(resourceId, path)
 	if err != nil {
-		return nil, 0, 0, err
+		return "", 0, 0, err
 	}
 	defer rdr.Close()
 	rangeLength := rand.Int63n(length)
@@ -457,35 +448,30 @@ func (ms *managedStorage) calculateExpectedHashes(resourceId, path string) (*Res
 	start := rand.Int63n(length - rangeLength)
 	_, err = rdr.(io.ReadSeeker).Seek(start, 0)
 	if err != nil {
-		return nil, 0, 0, err
+		return "", 0, 0, err
 	}
-	md5hash := md5.New()
-	sha256hash := sha256.New()
+	sha384hash := sha512.New384()
 	dataRdr := io.LimitReader(rdr, rangeLength)
-	dataRdr = io.TeeReader(io.TeeReader(dataRdr, sha256hash), md5hash)
+	dataRdr = io.TeeReader(dataRdr, sha384hash)
 	if _, err = ioutil.ReadAll(dataRdr); err != nil {
-		return nil, 0, 0, err
+		return "", 0, 0, err
 	}
-	md5hashHex := fmt.Sprintf("%x", md5hash.Sum(nil))
-	sha256hashHex := fmt.Sprintf("%x", sha256hash.Sum(nil))
-	return &ResourceHash{
-		MD5Hash:    md5hashHex,
-		SHA256Hash: sha256hashHex,
-	}, start, rangeLength, nil
+	sha384hashHex := fmt.Sprintf("%x", sha384hash.Sum(nil))
+	return sha384hashHex, start, rangeLength, nil
 }
 
 // PutForEnvironmentRequest is defined on the ManagedStorage interface.
-func (ms *managedStorage) PutForEnvironmentRequest(envUUID, path string, hash ResourceHash) (*RequestResponse, error) {
+func (ms *managedStorage) PutForEnvironmentRequest(envUUID, path string, hash string) (*RequestResponse, error) {
 	ms.requestMutex.Lock()
 	defer ms.requestMutex.Unlock()
 
 	// Find the resource id (if it exists) matching the supplied checksums.
 	// If there's no matching data already stored, a NotFound error is returned.
-	resourceId, err := ms.resourceCatalog.Find(&hash)
+	resourceId, err := ms.resourceCatalog.Find(hash)
 	if err != nil {
 		return nil, err
 	}
-	expectedHashes, rangeStart, rangeLength, err := ms.calculateExpectedHashes(resourceId, path)
+	expectedHash, rangeStart, rangeLength, err := ms.calculateExpectedHash(resourceId, path)
 	if err != nil {
 		return nil, errors.Annotatef(err, "cannot calculate response hashes for resource at path %q", path)
 	}
@@ -493,11 +479,11 @@ func (ms *managedStorage) PutForEnvironmentRequest(envUUID, path string, hash Re
 	requestId := ms.nextRequestId
 	ms.nextRequestId++
 	putRequest := PutRequest{
-		expiryTime:     time.Now().Add(requestExpiry),
-		envUUID:        envUUID,
-		path:           path,
-		resourceId:     resourceId,
-		expectedHashes: *expectedHashes,
+		expiryTime:   time.Now().Add(requestExpiry),
+		envUUID:      envUUID,
+		path:         path,
+		resourceId:   resourceId,
+		expectedHash: expectedHash,
 	}
 	ms.queuedRequests[requestId] = putRequest
 	// If this is the only request queued up, start the timer to
@@ -569,7 +555,7 @@ func (ms *managedStorage) ProofOfAccessResponse(response putResponse) error {
 	if !ok {
 		return ErrRequestExpired
 	}
-	if request.expectedHashes.MD5Hash != response.MD5Hash || request.expectedHashes.SHA256Hash != response.SHA256Hash {
+	if request.expectedHash != response.sha384Hash {
 		return ErrResponseMismatch
 	}
 	// Sanity check - ensure resource hasn't been deleted between when the put request
@@ -582,7 +568,7 @@ func (ms *managedStorage) ProofOfAccessResponse(response putResponse) error {
 	}
 
 	// Increment the resource catalog reference count.
-	resourceId, _, isNew, err := ms.resourceCatalog.Put(&resource.ResourceHash, resource.Length)
+	resourceId, _, isNew, err := ms.resourceCatalog.Put(resource.SHA384Hash, resource.Length)
 	if err != nil {
 		return errors.Annotate(err, "cannot update resource catalog")
 	}
