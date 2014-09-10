@@ -30,14 +30,18 @@ type ResourceCatalog interface {
 	// Find returns the resource id for the Resource with the given hash.
 	Find(hash string) (id string, err error)
 
-	// Put ensures a Resource entry exists for the given hash, returning the id, path,
-	// and a flag indicating if this is a new record.
-	// If the Resource exists, its reference count is incremented, otherwise a new entry is created.
-	Put(hash string, length int64) (id, path string, isNew bool, err error)
+	// Put ensures a Resource entry exists for the given hash,
+	// returning the id and path recorded by UploadComplete.
+	// If UploadComplete has not been called, path will be empty.
+	//
+	// If the Resource entry exists, its reference count is incremented,
+	// otherwise a new entry is created with a reference count of 1.
+	Put(hash string, length int64) (id, path string, err error)
 
-	// UploadComplete records that the underlying resource described by the Resource entry with id
-	// is now fully uploaded and the resource is available for use.
-	UploadComplete(id string) error
+	// UploadComplete records that the underlying resource described by
+	// the Resource entry with id is now fully uploaded to the specified
+	// storage path, and the resource is available for use.
+	UploadComplete(id, path string) error
 
 	// Remove decrements the reference count for a Resource with the given id, deleting it
 	// if the reference count reaches zero. The path of the Resource is returned.

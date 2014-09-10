@@ -130,7 +130,7 @@ func (s *managedStorageSuite) TestGetPendingUpload(c *gc.C) {
 	// Manually set up a scenario where there's a resource recorded
 	// but the upload has not occurred.
 	rc := blobstore.GetResourceCatalog(s.managedStorage)
-	id, _, _, err := rc.Put("foo", 100)
+	id, _, err := rc.Put("foo", 100)
 	c.Assert(err, gc.IsNil)
 	managedResource := blobstore.ManagedResource{
 		EnvUUID: "env",
@@ -148,20 +148,26 @@ func (s *managedStorageSuite) TestPutPendingUpload(c *gc.C) {
 	// but the upload has not occurred.
 	rc := blobstore.GetResourceCatalog(s.managedStorage)
 	hash := "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
-	id, _, _, err := rc.Put(hash, 3)
+
+	id, path, err := rc.Put(hash, 3)
 	c.Assert(err, gc.IsNil)
+	c.Assert(path, gc.Equals, "")
 	managedResource := blobstore.ManagedResource{
 		EnvUUID: "env",
 		User:    "user",
 		Path:    "environs/env/path/to/blob",
 	}
-	_, err = blobstore.PutManagedResource(s.managedStorage, managedResource, id)
 	c.Assert(err, gc.IsNil)
-	rdr := bytes.NewReader([]byte("abc"))
-	err = s.managedStorage.PutForEnvironment("env", "/path/to/blob", rdr, 3)
-	c.Assert(errors.Cause(err), gc.Equals, blobstore.ErrUploadPending)
+
+	_, err = blobstore.PutManagedResource(s.managedStorage, managedResource, id)
 	_, _, err = s.managedStorage.GetForEnvironment("env", "/path/to/blob")
 	c.Assert(errors.Cause(err), gc.Equals, blobstore.ErrUploadPending)
+
+	// Despite the upload being pending, a second concurrent upload will succeed.
+	rdr := bytes.NewReader([]byte("abc"))
+	err = s.managedStorage.PutForEnvironment("env", "/path/to/blob", rdr, 3)
+	c.Assert(err, gc.IsNil)
+	s.assertGet(c, "/path/to/blob", []byte("abc"))
 }
 
 func (s *managedStorageSuite) assertPut(c *gc.C, path string, blob []byte) string {
@@ -183,6 +189,7 @@ func (s *managedStorageSuite) assertPut(c *gc.C, path string, blob []byte) strin
 	// Use the resource catalog record to load the underlying data from blobstore.
 	r, err := s.resourceStorage.Get(rd.Path)
 	c.Assert(err, gc.IsNil)
+	defer r.Close()
 	data, err := ioutil.ReadAll(r)
 	c.Assert(err, gc.IsNil)
 	c.Assert(data, gc.DeepEquals, blob)
