@@ -177,7 +177,7 @@ func (ms *managedStorage) getResource(resourceId string, path string) (io.ReadCl
 
 // cleanupResourceCatalog is used to delete a resource catalog record if a put operation fails.
 func cleanupResourceCatalog(rc ResourceCatalog, id string, err *error) {
-	if *err == nil {
+	if *err == nil || errors.Cause(*err) == ErrUploadPending {
 		return
 	}
 	logger.Warningf("cleaning up resource catalog after failed put")
