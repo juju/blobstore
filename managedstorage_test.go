@@ -126,7 +126,7 @@ type resourceDocStub struct {
 	Path string
 }
 
-func (s *managedStorageSuite) TestPendingUpload(c *gc.C) {
+func (s *managedStorageSuite) TestGetPendingUpload(c *gc.C) {
 	// Manually set up a scenario where there's a resource recorded
 	// but the upload has not occurred.
 	rc := blobstore.GetResourceCatalog(s.managedStorage)
@@ -141,6 +141,27 @@ func (s *managedStorageSuite) TestPendingUpload(c *gc.C) {
 	c.Assert(err, gc.IsNil)
 	_, _, err = s.managedStorage.GetForEnvironment("env", "/path/to/blob")
 	c.Assert(err, gc.Equals, blobstore.ErrUploadPending)
+}
+
+func (s *managedStorageSuite) TestPutPendingUpload(c *gc.C) {
+	// Manually set up a scenario where there's a resource recorded
+	// but the upload has not occurred.
+	rc := blobstore.GetResourceCatalog(s.managedStorage)
+	hash := "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
+	id, _, _, err := rc.Put(hash, 3)
+	c.Assert(err, gc.IsNil)
+	managedResource := blobstore.ManagedResource{
+		EnvUUID: "env",
+		User:    "user",
+		Path:    "environs/env/path/to/blob",
+	}
+	_, err = blobstore.PutManagedResource(s.managedStorage, managedResource, id)
+	c.Assert(err, gc.IsNil)
+	rdr := bytes.NewReader([]byte("abc"))
+	err = s.managedStorage.PutForEnvironment("env", "/path/to/blob", rdr, 3)
+	c.Assert(errors.Cause(err), gc.Equals, blobstore.ErrUploadPending)
+	_, _, err = s.managedStorage.GetForEnvironment("env", "/path/to/blob")
+	c.Assert(errors.Cause(err), gc.Equals, blobstore.ErrUploadPending)
 }
 
 func (s *managedStorageSuite) assertPut(c *gc.C, path string, blob []byte) string {
