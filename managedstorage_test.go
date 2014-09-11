@@ -384,15 +384,19 @@ func (s *managedStorageSuite) TestPutRequestNotFound(c *gc.C) {
 	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
 
-func (s *managedStorageSuite) putTestBlob(c *gc.C, path string) (blob []byte, sha384HashHex string) {
+func (s *managedStorageSuite) putTestRandomBlob(c *gc.C, path string) (blob []byte, sha384HashHex string) {
 	id := bson.NewObjectId().Hex()
 	blob = []byte(id)
+	return blob, s.putTestBlob(c, path, blob)
+}
+
+func (s *managedStorageSuite) putTestBlob(c *gc.C, path string, blob []byte) (sha384HashHex string) {
 	rdr := bytes.NewReader(blob)
 	err := s.managedStorage.PutForEnvironment("env", path, rdr, int64(len(blob)))
 	c.Assert(err, gc.IsNil)
 	s.assertGet(c, path, blob)
 	sha384HashHex = calculateCheckSum(c, 0, int64(len(blob)), blob)
-	return blob, sha384HashHex
+	return sha384HashHex
 }
 
 func calculateCheckSum(c *gc.C, start, length int64, blob []byte) (sha384HashHex string) {
@@ -405,7 +409,7 @@ func calculateCheckSum(c *gc.C, start, length int64, blob []byte) (sha384HashHex
 }
 
 func (s *managedStorageSuite) TestPutRequestResponseHashMismatch(c *gc.C) {
-	_, sha384Hash := s.putTestBlob(c, "path/to/blob")
+	_, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
 	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	response := blobstore.NewPutResponse(reqResp.RequestId, "notsha384")
@@ -533,7 +537,7 @@ func (s *managedStorageSuite) queuePutRequests(c *gc.C, done chan struct{}) {
 	go func() {
 		for i := 0; i < 10; i++ {
 			blobPath := fmt.Sprintf("path/to/blob%d", i)
-			blob, sha384Hash := s.putTestBlob(c, blobPath)
+			blob, sha384Hash := s.putTestRandomBlob(c, blobPath)
 			reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
 			c.Assert(err, gc.IsNil)
 			// Let one request timeout
@@ -580,7 +584,7 @@ func (s *managedStorageSuite) TestPutRequestMultiRandom(c *gc.C) {
 func (s *managedStorageSuite) TestPutRequestExpired(c *gc.C) {
 	ch := make(chan struct{})
 	s.PatchValue(blobstore.AfterFunc, patchedAfterFunc(ch))
-	blob, sha384Hash := s.putTestBlob(c, "path/to/blob")
+	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
 	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
@@ -596,7 +600,7 @@ func (s *managedStorageSuite) TestPutRequestExpired(c *gc.C) {
 // Run one simple test with the real time.AfterFunc to ensure it works.
 func (s *managedStorageSuite) TestPutRequestExpiredWithRealTimeAfter(c *gc.C) {
 	s.PatchValue(blobstore.RequestExpiry, 5*time.Millisecond)
-	blob, sha384Hash := s.putTestBlob(c, "path/to/blob")
+	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
 	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
@@ -612,7 +616,7 @@ func (s *managedStorageSuite) TestPutRequestExpiredWithRealTimeAfter(c *gc.C) {
 func (s *managedStorageSuite) TestPutRequestExpiredMulti(c *gc.C) {
 	ch := make(chan struct{})
 	s.PatchValue(blobstore.AfterFunc, patchedAfterFunc(ch))
-	blob, sha384Hash := s.putTestBlob(c, "path/to/blob")
+	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
 	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
@@ -634,7 +638,7 @@ func (s *managedStorageSuite) TestPutRequestExpiredMulti(c *gc.C) {
 }
 
 func (s *managedStorageSuite) TestPutRequestDeleted(c *gc.C) {
-	blob, sha384Hash := s.putTestBlob(c, "path/to/blob")
+	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
 	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	err = s.managedStorage.RemoveForEnvironment("env", "path/to/blob")
@@ -644,4 +648,28 @@ func (s *managedStorageSuite) TestPutRequestDeleted(c *gc.C) {
 	response := blobstore.NewPutResponse(reqResp.RequestId, sha384Response)
 	err = s.managedStorage.ProofOfAccessResponse(response)
 	c.Assert(err, gc.Equals, blobstore.ErrResourceDeleted)
+}
+
+func (s *managedStorageSuite) TestPutMultiSameData(c *gc.C) {
+	blob := bytes.Repeat([]byte("blobalob"), 1024*1024*10)
+	done := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		wg.Add(10)
+		for i := 0; i < 10; i++ {
+			go func() {
+				defer wg.Done()
+				rdr := bytes.NewReader(blob)
+				err := s.managedStorage.PutForEnvironment("env", "path", rdr, int64(len(blob)))
+				c.Assert(err, gc.IsNil)
+			}()
+		}
+		wg.Wait()
+		done <- struct{}{}
+	}()
+	select {
+	case <-done:
+	case <-time.After(1 * time.Minute):
+		c.Fatalf("timed out waiting for puts to be processed")
+	}
 }
