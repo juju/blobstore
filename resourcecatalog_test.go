@@ -132,7 +132,7 @@ func (s *resourceCatalogSuite) TestFind(c *gc.C) {
 	id, path, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.IsNil)
 	c.Assert(path, gc.Equals, "")
-	s.rCatalog.UploadComplete(id, "wherever")
+	err = s.rCatalog.UploadComplete(id, "wherever")
 	c.Assert(err, gc.IsNil)
 	foundId, err := s.rCatalog.Find("sha384foo")
 	c.Assert(err, gc.IsNil)
@@ -246,4 +246,16 @@ func (s *resourceCatalogSuite) TestDeleteResourceRace(c *gc.C) {
 	c.Assert(err, gc.IsNil)
 	_, err = s.rCatalog.Get(id)
 	c.Assert(err, gc.ErrorMatches, `resource with id ".*" not found`)
+}
+
+func (s *resourceCatalogSuite) TestUploadCompleteDeleted(c *gc.C) {
+	id, _, err := s.rCatalog.Put("sha384foo", 100)
+	c.Assert(err, gc.IsNil)
+	remove := func() {
+		_, _, err := s.rCatalog.Remove(id)
+		c.Assert(err, gc.IsNil)
+	}
+	defer txntesting.SetBeforeHooks(c, s.txnRunner, remove).Check()
+	err = s.rCatalog.UploadComplete(id, "wherever")
+	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
