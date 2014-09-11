@@ -15,7 +15,7 @@ var (
 	// is not yet fully uploaded.
 	ErrUploadPending = errors.New("Resource not available because upload is not yet complete")
 
-	// ErrUploadedConcurrently is used to indicate that another client uploaded the
+	// errUploadedConcurrently is used to indicate that another client uploaded the
 	// resource already.
 	errUploadedConcurrently = errors.AlreadyExistsf("resource")
 )
@@ -31,7 +31,9 @@ type Resource struct {
 
 // resourceDoc is the persistent representation of a Resource.
 type resourceDoc struct {
-	Id         string `bson:"_id"`
+	Id string `bson:"_id"`
+	// Path is the storage path of the resource, which will be
+	// the empty string until the upload has been completed.
 	Path       string `bson:"path"`
 	SHA384Hash string `bson:"sha384hash"`
 	Length     int64  `bson:"length"`

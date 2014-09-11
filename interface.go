@@ -40,7 +40,9 @@ type ResourceCatalog interface {
 
 	// UploadComplete records that the underlying resource described by
 	// the Resource entry with id is now fully uploaded to the specified
-	// storage path, and the resource is available for use.
+	// storage path, and the resource is available for use. If another
+	// uploader already recorded a path, then UploadComplete will return
+	// an error satisfiying juju/errors.IsAlreadyExists.
 	UploadComplete(id, path string) error
 
 	// Remove decrements the reference count for a Resource with the given id, deleting it

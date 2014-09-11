@@ -259,7 +259,10 @@ func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, l
 			// catalog before us, so remove the resource we just stored.
 			if err := ms.resourceStore.Remove(resourcePath); err != nil {
 				// This is not fatal, there's nothing we can do about it.
-				logger.Errorf("cannot remove resource from storage at %q", resourcePath)
+				logger.Errorf(
+					"cannot remove already-uploaded duplicate resource from storage at %q",
+					resourcePath,
+				)
 			}
 		} else if err != nil {
 			return errors.Annotatef(err, "cannot mark resource %q as upload complete", managedPath)
