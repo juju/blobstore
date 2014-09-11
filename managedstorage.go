@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/juju/errors"
+	"github.com/juju/utils"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
@@ -223,7 +224,7 @@ func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, l
 	if checkHash != "" && checkHash != hash {
 		return errors.New("hash mismatch")
 	}
-	resourceId, resourcePath, isNew, err := ms.resourceCatalog.Put(hash, length)
+	resourceId, resourcePath, err := ms.resourceCatalog.Put(hash, length)
 	if err != nil {
 		return errors.Annotate(err, "cannot update resource catalog")
 	}
@@ -238,13 +239,32 @@ func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, l
 	}
 
 	// Newly added resource data needs to be saved to the storage.
-	if isNew {
-		if _, err := ms.resourceStore.Put(resourcePath, dataFile, length); err != nil {
+	if resourcePath == "" {
+		uuid, err := utils.NewUUID()
+		if err != nil {
+			return errors.Annotate(err, "cannot generate UUID to store resource")
+		}
+		resourcePath = uuid.String()
+
+		_, err = ms.resourceStore.Put(resourcePath, dataFile, length)
+		if err != nil {
 			return errors.Annotatef(err, "cannot add resource %q to store at storage path %q", managedPath, resourcePath)
 		}
+
 		// If there's an error from here on, we need to ensure the saved resource data is cleaned up.
 		defer cleanupResource(ms.resourceStore, resourcePath, &putError)
-		if err := ms.resourceCatalog.UploadComplete(resourceId); err != nil {
+		err = ms.resourceCatalog.UploadComplete(resourceId, resourcePath)
+		if errors.IsAlreadyExists(err) {
+			// Another client uploaded the resource and recorded it in the
+			// catalog before us, so remove the resource we just stored.
+			if err := ms.resourceStore.Remove(resourcePath); err != nil {
+				// This is not fatal, there's nothing we can do about it.
+				logger.Errorf(
+					"cannot remove already-uploaded duplicate resource from storage at %q",
+					resourcePath,
+				)
+			}
+		} else if err != nil {
 			return errors.Annotatef(err, "cannot mark resource %q as upload complete", managedPath)
 		}
 	}
@@ -568,13 +588,13 @@ func (ms *managedStorage) ProofOfAccessResponse(response putResponse) error {
 	}
 
 	// Increment the resource catalog reference count.
-	resourceId, _, isNew, err := ms.resourceCatalog.Put(resource.SHA384Hash, resource.Length)
+	resourceId, resourcePath, err := ms.resourceCatalog.Put(resource.SHA384Hash, resource.Length)
 	if err != nil {
 		return errors.Annotate(err, "cannot update resource catalog")
 	}
 	defer cleanupResourceCatalog(ms.resourceCatalog, resourceId, &err)
 	// We expect an existing catalog entry else it has been deleted from underneath us.
-	if isNew || resourceId != request.resourceId {
+	if resourcePath == "" || resourceId != request.resourceId {
 		return ErrResourceDeleted
 	}
 

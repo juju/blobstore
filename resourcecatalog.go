@@ -4,19 +4,21 @@
 package blobstore
 
 import (
-	"fmt"
-
 	"github.com/juju/errors"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
-
-	jujutxn "github.com/juju/txn"
 )
 
-// ErrUploadPending is used to indicate that the underlying resource for a catalog entry
-// is not yet fully uploaded.
-var ErrUploadPending = fmt.Errorf("Resource not available because upload is not yet complete")
+var (
+	// ErrUploadPending is used to indicate that the underlying resource for a catalog entry
+	// is not yet fully uploaded.
+	ErrUploadPending = errors.New("Resource not available because upload is not yet complete")
+
+	// errUploadedConcurrently is used to indicate that another client uploaded the
+	// resource already.
+	errUploadedConcurrently = errors.AlreadyExistsf("resource")
+)
 
 // Resource is a catalog entry for stored data.
 // It contains the path where the data is stored as well as
@@ -29,13 +31,13 @@ type Resource struct {
 
 // resourceDoc is the persistent representation of a Resource.
 type resourceDoc struct {
-	Id         string `bson:"_id"`
-	Path       string
-	SHA384Hash string
-	Length     int64
-	RefCount   int64
-	// Pending is true while the underlying resource is uploaded.
-	Pending bool
+	Id string `bson:"_id"`
+	// Path is the storage path of the resource, which will be
+	// the empty string until the upload has been completed.
+	Path       string `bson:"path"`
+	SHA384Hash string `bson:"sha384hash"`
+	Length     int64  `bson:"length"`
+	RefCount   int64  `bson:"refcount"`
 }
 
 // resourceCatalog is a mongo backed ResourceCatalog instance.
@@ -60,11 +62,9 @@ func newResource(path, sha384hash string, length int64) *Resource {
 func newResourceDoc(sha384Hash string, length int64) resourceDoc {
 	return resourceDoc{
 		Id:         sha384Hash,
-		Path:       bson.NewObjectId().Hex(),
 		SHA384Hash: sha384Hash,
 		RefCount:   1,
 		Length:     length,
-		Pending:    true,
 	}
 }
 
@@ -90,7 +90,7 @@ func (rc *resourceCatalog) Get(id string) (*Resource, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	if doc.Pending {
+	if doc.Path == "" {
 		return nil, ErrUploadPending
 	}
 	return newResource(doc.Path, doc.SHA384Hash, doc.Length), nil
@@ -104,30 +104,29 @@ func (rc *resourceCatalog) Find(hash string) (string, error) {
 	} else if err != nil {
 		return "", err
 	}
-	if doc.Pending {
+	if doc.Path == "" {
 		return "", ErrUploadPending
 	}
 	return doc.Id, nil
 }
 
 // Put is defined on the ResourceCatalog interface.
-func (rc *resourceCatalog) Put(hash string, length int64) (id, path string, isNew bool, err error) {
+func (rc *resourceCatalog) Put(hash string, length int64) (id, path string, err error) {
 	buildTxn := func(attempt int) (ops []txn.Op, err error) {
-		id, path, isNew, ops, err = rc.resourceIncRefOps(hash, length)
+		id, path, ops, err = rc.resourceIncRefOps(hash, length)
 		return ops, err
 	}
 	txnRunner := txnRunner(rc.collection.Database)
 	if err = txnRunner.Run(buildTxn); err != nil {
-		return "", "", false, err
+		return "", "", err
 	}
-
-	return id, path, isNew, nil
+	return id, path, nil
 }
 
 // UploadComplete is defined on the ResourceCatalog interface.
-func (rc *resourceCatalog) UploadComplete(id string) error {
+func (rc *resourceCatalog) UploadComplete(id, path string) error {
 	buildTxn := func(attempt int) (ops []txn.Op, err error) {
-		if ops, err = rc.uploadCompleteOps(id); err == mgo.ErrNotFound {
+		if ops, err = rc.uploadCompleteOps(id, path); err == mgo.ErrNotFound {
 			return nil, errors.NotFoundf("resource with id %q", id)
 		}
 		return ops, err
@@ -153,20 +152,20 @@ func checksumMatch(hash string) bson.D {
 }
 
 func (rc *resourceCatalog) resourceIncRefOps(hash string, length int64) (
-	id, path string, isNew bool, ops []txn.Op, err error,
+	id, path string, ops []txn.Op, err error,
 ) {
 	var doc resourceDoc
 	exists := false
 	checksumMatchTerm := checksumMatch(hash)
 	err = rc.collection.Find(checksumMatchTerm).One(&doc)
 	if err != nil && err != mgo.ErrNotFound {
-		return "", "", false, nil, err
+		return "", "", nil, err
 	} else if err == nil {
 		exists = true
 	}
 	if !exists {
 		doc := newResourceDoc(hash, length)
-		return doc.Id, doc.Path, true, []txn.Op{{
+		return doc.Id, "", []txn.Op{{
 			C:      rc.collection.Name,
 			Id:     doc.Id,
 			Assert: txn.DocMissing,
@@ -174,9 +173,9 @@ func (rc *resourceCatalog) resourceIncRefOps(hash string, length int64) (
 		}}, nil
 	}
 	if doc.Length != length {
-		return "", "", false, nil, errors.Errorf("length mismatch in resource document %d != %d", doc.Length, length)
+		return "", "", nil, errors.Errorf("length mismatch in resource document %d != %d", doc.Length, length)
 	}
-	return doc.Id, doc.Path, false, []txn.Op{{
+	return doc.Id, doc.Path, []txn.Op{{
 		C:      rc.collection.Name,
 		Id:     doc.Id,
 		Assert: checksumMatchTerm,
@@ -184,19 +183,19 @@ func (rc *resourceCatalog) resourceIncRefOps(hash string, length int64) (
 	}}, nil
 }
 
-func (rc *resourceCatalog) uploadCompleteOps(id string) ([]txn.Op, error) {
+func (rc *resourceCatalog) uploadCompleteOps(id, path string) ([]txn.Op, error) {
 	var doc resourceDoc
 	if err := rc.collection.FindId(id).One(&doc); err != nil {
 		return nil, err
 	}
-	if !doc.Pending {
-		return nil, jujutxn.ErrNoOperations
+	if doc.Path != "" {
+		return nil, errUploadedConcurrently
 	}
 	return []txn.Op{{
 		C:      rc.collection.Name,
 		Id:     doc.Id,
-		Assert: txn.DocExists,
-		Update: bson.D{{"$set", bson.D{{"pending", false}}}},
+		Assert: bson.D{{"path", ""}}, // doc exists, path is unset
+		Update: bson.D{{"$set", bson.D{{"path", path}}}},
 	}}, nil
 }
 

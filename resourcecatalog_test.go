@@ -4,6 +4,7 @@
 package blobstore_test
 
 import (
+	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/txn"
@@ -58,11 +59,10 @@ func (s *resourceCatalogSuite) TearDownTest(c *gc.C) {
 func (s *resourceCatalogSuite) assertPut(c *gc.C, expectedNew bool, sha384Hash string) (
 	id, path string,
 ) {
-	id, path, isNew, err := s.rCatalog.Put(sha384Hash, 200)
+	id, path, err := s.rCatalog.Put(sha384Hash, 200)
 	c.Assert(err, gc.IsNil)
-	c.Assert(isNew, gc.Equals, expectedNew)
 	c.Assert(id, gc.Not(gc.Equals), "")
-	c.Assert(path, gc.Not(gc.Equals), "")
+	c.Assert(path, gc.Equals, "")
 	s.assertGetPending(c, id)
 	return id, path
 }
@@ -100,7 +100,7 @@ func (s *resourceCatalogSuite) TestPut(c *gc.C) {
 
 func (s *resourceCatalogSuite) TestPutLengthMismatch(c *gc.C) {
 	id, _ := s.assertPut(c, true, "sha384foo")
-	_, _, _, err := s.rCatalog.Put("sha384foo", 100)
+	_, _, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.ErrorMatches, "length mismatch in resource document 200 != 100")
 	s.assertRefCount(c, id, 1)
 }
@@ -117,10 +117,9 @@ func (s *resourceCatalogSuite) TestGetNonExistent(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestGet(c *gc.C) {
-	id, path, isNew, err := s.rCatalog.Put("sha384foo", 100)
+	id, path, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.IsNil)
-	c.Assert(isNew, jc.IsTrue)
-	c.Assert(path, gc.Not(gc.Equals), "")
+	c.Assert(path, gc.Equals, "")
 	s.assertGetPending(c, id)
 }
 
@@ -130,11 +129,10 @@ func (s *resourceCatalogSuite) TestFindNonExistent(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestFind(c *gc.C) {
-	id, path, isNew, err := s.rCatalog.Put("sha384foo", 100)
+	id, path, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.IsNil)
-	c.Assert(isNew, jc.IsTrue)
-	c.Assert(path, gc.Not(gc.Equals), "")
-	s.rCatalog.UploadComplete(id)
+	c.Assert(path, gc.Equals, "")
+	err = s.rCatalog.UploadComplete(id, "wherever")
 	c.Assert(err, gc.IsNil)
 	foundId, err := s.rCatalog.Find("sha384foo")
 	c.Assert(err, gc.IsNil)
@@ -142,15 +140,15 @@ func (s *resourceCatalogSuite) TestFind(c *gc.C) {
 }
 
 func (s *resourceCatalogSuite) TestUploadComplete(c *gc.C) {
-	id, _, _, err := s.rCatalog.Put("sha384foo", 100)
+	id, _, err := s.rCatalog.Put("sha384foo", 100)
 	c.Assert(err, gc.IsNil)
 	s.assertGetPending(c, id)
-	s.rCatalog.UploadComplete(id)
+	err = s.rCatalog.UploadComplete(id, "wherever")
 	c.Assert(err, gc.IsNil)
 	s.asserGetUploaded(c, id, "sha384foo", 100)
-	// A second call works just fine.
-	s.rCatalog.UploadComplete(id)
-	c.Assert(err, gc.IsNil)
+	// A second call yields an AlreadyExists error.
+	err = s.rCatalog.UploadComplete(id, "wherever")
+	c.Assert(err, jc.Satisfies, errors.IsAlreadyExists)
 	s.asserGetUploaded(c, id, "sha384foo", 100)
 }
 
@@ -199,11 +197,10 @@ func (s *resourceCatalogSuite) TestPutNewResourceRace(c *gc.C) {
 		func() { firstId, _ = s.assertPut(c, true, "sha384foo") },
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFuncs...).Check()
-	id, _, isNew, err := s.rCatalog.Put("sha384foo", 200)
+	id, _, err := s.rCatalog.Put("sha384foo", 200)
 	c.Assert(err, gc.IsNil)
 	c.Assert(id, gc.Equals, firstId)
-	c.Assert(isNew, jc.IsFalse)
-	err = s.rCatalog.UploadComplete(id)
+	err = s.rCatalog.UploadComplete(id, "wherever")
 	c.Assert(err, gc.IsNil)
 	r, err := s.rCatalog.Get(id)
 	c.Assert(err, gc.IsNil)
@@ -214,7 +211,7 @@ func (s *resourceCatalogSuite) TestPutNewResourceRace(c *gc.C) {
 
 func (s *resourceCatalogSuite) TestPutDeletedResourceRace(c *gc.C) {
 	firstId, _ := s.assertPut(c, true, "sha384foo")
-	err := s.rCatalog.UploadComplete(firstId)
+	err := s.rCatalog.UploadComplete(firstId, "wherever")
 	c.Assert(err, gc.IsNil)
 	beforeFuncs := []func(){
 		func() {
@@ -223,11 +220,10 @@ func (s *resourceCatalogSuite) TestPutDeletedResourceRace(c *gc.C) {
 		},
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFuncs...).Check()
-	id, _, isNew, err := s.rCatalog.Put("sha384foo", 200)
+	id, _, err := s.rCatalog.Put("sha384foo", 200)
 	c.Assert(err, gc.IsNil)
-	c.Assert(isNew, jc.IsTrue)
 	c.Assert(firstId, gc.Equals, id)
-	err = s.rCatalog.UploadComplete(id)
+	err = s.rCatalog.UploadComplete(id, "wherever")
 	c.Assert(err, gc.IsNil)
 	r, err := s.rCatalog.Get(id)
 	c.Assert(err, gc.IsNil)
@@ -250,4 +246,16 @@ func (s *resourceCatalogSuite) TestDeleteResourceRace(c *gc.C) {
 	c.Assert(err, gc.IsNil)
 	_, err = s.rCatalog.Get(id)
 	c.Assert(err, gc.ErrorMatches, `resource with id ".*" not found`)
+}
+
+func (s *resourceCatalogSuite) TestUploadCompleteDeleted(c *gc.C) {
+	id, _, err := s.rCatalog.Put("sha384foo", 100)
+	c.Assert(err, gc.IsNil)
+	remove := func() {
+		_, _, err := s.rCatalog.Remove(id)
+		c.Assert(err, gc.IsNil)
+	}
+	defer txntesting.SetBeforeHooks(c, s.txnRunner, remove).Check()
+	err = s.rCatalog.UploadComplete(id, "wherever")
+	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
