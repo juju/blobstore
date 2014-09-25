@@ -9,9 +9,9 @@ import (
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/txn"
 	txntesting "github.com/juju/txn/testing"
+	gc "gopkg.in/check.v1"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
-	gc "gopkg.in/check.v1"
 
 	"github.com/juju/blobstore"
 )

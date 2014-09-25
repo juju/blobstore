@@ -18,10 +18,10 @@ import (
 	jujutxn "github.com/juju/txn"
 	txntesting "github.com/juju/txn/testing"
 	"github.com/juju/utils"
+	gc "gopkg.in/check.v1"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
-	gc "gopkg.in/check.v1"
 
 	"github.com/juju/blobstore"
 )
