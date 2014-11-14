@@ -129,10 +129,11 @@ func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
 	if err != nil {
 		return nil, "", err
 	}
+	tempFilename := f.Name()
 	// Add a cleanup function to remove the data file if we exit with an error.
 	defer func() {
 		if err != nil {
-			os.Remove(f.Name())
+			os.Remove(tempFilename)
 		}
 	}()
 	// Write the data to a temp file.
