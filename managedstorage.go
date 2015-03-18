@@ -133,6 +133,7 @@ func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
 	// Add a cleanup function to remove the data file if we exit with an error.
 	defer func() {
 		if err != nil {
+			f.Close()
 			os.Remove(tempFilename)
 		}
 	}()
@@ -221,7 +222,10 @@ func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, l
 		return errors.Annotate(err, "cannot calculate data checksums")
 	}
 	// Remove the data file when we're done.
-	defer os.Remove(dataFile.Name())
+	defer func() {
+		dataFile.Close()
+		os.Remove(dataFile.Name())
+	}()
 	if checkHash != "" && checkHash != hash {
 		return errors.New("hash mismatch")
 	}
