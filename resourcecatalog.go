@@ -85,7 +85,9 @@ func newResourceCatalog(db *mgo.Database) ResourceCatalog {
 // Get is defined on the ResourceCatalog interface.
 func (rc *resourceCatalog) Get(id string) (*Resource, error) {
 	var doc resourceDoc
-	if err := rc.collection.FindId(id).One(&doc); err == mgo.ErrNotFound {
+	coll := rc.collection.With(rc.collection.Database.Session.Copy())
+	defer coll.Database.Session.Close()
+	if err := coll.FindId(id).One(&doc); err == mgo.ErrNotFound {
 		return nil, errors.NotFoundf("resource with id %q", id)
 	} else if err != nil {
 		return nil, err
@@ -99,7 +101,9 @@ func (rc *resourceCatalog) Get(id string) (*Resource, error) {
 // Find is defined on the ResourceCatalog interface.
 func (rc *resourceCatalog) Find(hash string) (string, error) {
 	var doc resourceDoc
-	if err := rc.collection.Find(checksumMatch(hash)).One(&doc); err == mgo.ErrNotFound {
+	coll := rc.collection.With(rc.collection.Database.Session.Copy())
+	defer coll.Database.Session.Close()
+	if err := coll.Find(checksumMatch(hash)).One(&doc); err == mgo.ErrNotFound {
 		return "", errors.NotFoundf("resource with sha384=%q", hash)
 	} else if err != nil {
 		return "", err
@@ -116,7 +120,9 @@ func (rc *resourceCatalog) Put(hash string, length int64) (id, path string, err 
 		id, path, ops, err = rc.resourceIncRefOps(hash, length)
 		return ops, err
 	}
-	txnRunner := txnRunner(rc.collection.Database)
+	db := rc.collection.Database.With(rc.collection.Database.Session.Copy())
+	defer db.Session.Close()
+	txnRunner := txnRunner(db)
 	if err = txnRunner.Run(buildTxn); err != nil {
 		return "", "", err
 	}
@@ -131,7 +137,9 @@ func (rc *resourceCatalog) UploadComplete(id, path string) error {
 		}
 		return ops, err
 	}
-	txnRunner := txnRunner(rc.collection.Database)
+	db := rc.collection.Database.With(rc.collection.Database.Session.Copy())
+	defer db.Session.Close()
+	txnRunner := txnRunner(db)
 	return txnRunner.Run(buildTxn)
 }
 
@@ -143,7 +151,9 @@ func (rc *resourceCatalog) Remove(id string) (wasDeleted bool, path string, err 
 		}
 		return ops, err
 	}
-	txnRunner := txnRunner(rc.collection.Database)
+	db := rc.collection.Database.With(rc.collection.Database.Session.Copy())
+	defer db.Session.Close()
+	txnRunner := txnRunner(db)
 	return wasDeleted, path, txnRunner.Run(buildTxn)
 }
 
@@ -157,7 +167,9 @@ func (rc *resourceCatalog) resourceIncRefOps(hash string, length int64) (
 	var doc resourceDoc
 	exists := false
 	checksumMatchTerm := checksumMatch(hash)
-	err = rc.collection.Find(checksumMatchTerm).One(&doc)
+	coll := rc.collection.With(rc.collection.Database.Session.Copy())
+	defer coll.Database.Session.Close()
+	err = coll.Find(checksumMatchTerm).One(&doc)
 	if err != nil && err != mgo.ErrNotFound {
 		return "", "", nil, err
 	} else if err == nil {
@@ -185,7 +197,9 @@ func (rc *resourceCatalog) resourceIncRefOps(hash string, length int64) (
 
 func (rc *resourceCatalog) uploadCompleteOps(id, path string) ([]txn.Op, error) {
 	var doc resourceDoc
-	if err := rc.collection.FindId(id).One(&doc); err != nil {
+	coll := rc.collection.With(rc.collection.Database.Session.Copy())
+	defer coll.Database.Session.Close()
+	if err := coll.FindId(id).One(&doc); err != nil {
 		return nil, err
 	}
 	if doc.Path != "" {
@@ -201,7 +215,9 @@ func (rc *resourceCatalog) uploadCompleteOps(id, path string) ([]txn.Op, error) 
 
 func (rc *resourceCatalog) resourceDecRefOps(id string) (wasDeleted bool, path string, ops []txn.Op, err error) {
 	var doc resourceDoc
-	if err = rc.collection.FindId(id).One(&doc); err != nil {
+	coll := rc.collection.With(rc.collection.Database.Session.Copy())
+	defer coll.Database.Session.Close()
+	if err = coll.FindId(id).One(&doc); err != nil {
 		return false, "", nil, err
 	}
 	if doc.RefCount == 1 {
