@@ -517,7 +517,6 @@ func (s *managedStorageSuite) checkPutResponse(c *gc.C, index int, wg *sync.Wait
 			c.Check(err, gc.IsNil)
 			if err == nil {
 				r, length, err := s.managedStorage.GetForEnvironment("env", fmt.Sprintf("path/to/blob%d", index))
-				defer r.Close()
 				c.Check(err, gc.IsNil)
 				if err == nil {
 					data, err := ioutil.ReadAll(r)

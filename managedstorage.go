@@ -157,9 +157,7 @@ func (ms *managedStorage) GetForEnvironment(envUUID, path string) (io.ReadCloser
 		return nil, 0, err
 	}
 	var doc managedResourceDoc
-	coll := ms.managedResourceCollection.With(ms.managedResourceCollection.Database.Session.Copy())
-	defer coll.Database.Session.Close()
-	if err := coll.Find(bson.D{{"path", managedPath}}).One(&doc); err != nil {
+	if err := ms.managedResourceCollection.Find(bson.D{{"path", managedPath}}).One(&doc); err != nil {
 		if err == mgo.ErrNotFound {
 			return nil, 0, errors.NotFoundf("resource at path %q", managedPath)
 		}
@@ -323,9 +321,7 @@ func (ms *managedStorage) putManagedResource(managedResource ManagedResource, re
 		return addManagedResourceOps, err
 	}
 
-	db := ms.db.With(ms.db.Session.Copy())
-	defer db.Session.Close()
-	txnRunner := txnRunner(db)
+	txnRunner := txnRunner(ms.db)
 	if err = txnRunner.Run(buildTxn); err != nil {
 		return "", errors.Annotate(err, "cannot update managed resource catalog")
 	}
@@ -352,9 +348,7 @@ func (ms *managedStorage) RemoveForEnvironment(envUUID, path string) (err error)
 		resourceId, removeManagedResourceOps, err = ms.removeResourceTxn(managedPath)
 		return removeManagedResourceOps, err
 	}
-	db := ms.db.With(ms.db.Session.Copy())
-	defer db.Session.Close()
-	txnRunner := txnRunner(db)
+	txnRunner := txnRunner(ms.db)
 	if err := txnRunner.Run(buildTxn); err != nil {
 		if err == mgo.ErrNotFound {
 			return errors.NotFoundf("resource at path %q", managedPath)
@@ -408,9 +402,7 @@ var putResourceTxn = func(coll *mgo.Collection, managedResource ManagedResource,
 
 func (ms *managedStorage) removeResourceTxn(managedPath string) (string, []txn.Op, error) {
 	var existingDoc managedResourceDoc
-	coll := ms.managedResourceCollection.With(ms.managedResourceCollection.Database.Session.Copy())
-	defer coll.Database.Session.Close()
-	if err := coll.FindId(managedPath).One(&existingDoc); err != nil {
+	if err := ms.managedResourceCollection.FindId(managedPath).One(&existingDoc); err != nil {
 		return "", nil, err
 	}
 	return existingDoc.ResourceId, []txn.Op{{
