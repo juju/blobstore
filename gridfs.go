@@ -32,60 +32,25 @@ func NewGridFS(dbName, namespace string, session *mgo.Session) ResourceStorage {
 }
 
 func (g *gridFSStorage) db() *mgo.Database {
-	s := g.session.Copy()
-	return s.DB(g.dbName)
+	return g.session.DB(g.dbName)
 }
 
-func (g *gridFSStorage) gridFS() *gridFS {
-	db := g.db()
-	return &gridFS{
-		GridFS:  db.GridFS(g.namespace),
-		session: db.Session,
-	}
-}
-
-// gridFS wraps a GridFS so that the session can be closed when finished
-// with.
-type gridFS struct {
-	*mgo.GridFS
-	session *mgo.Session
-}
-
-func (g *gridFS) Close() {
-	g.session.Close()
-}
-
-// gridfsFile wraps a GridFile so that the session can be closed when finished
-// with.
-type gridfsFile struct {
-	*mgo.GridFile
-	gfs *gridFS
-}
-
-func (f *gridfsFile) Close() error {
-	defer f.gfs.Close()
-	return f.GridFile.Close()
+func (g *gridFSStorage) gridFS() *mgo.GridFS {
+	return g.db().GridFS(g.namespace)
 }
 
 // Get is defined on ResourceStorage.
 func (g *gridFSStorage) Get(path string) (io.ReadCloser, error) {
-	gfs := g.gridFS()
-	file, err := gfs.Open(path)
+	file, err := g.gridFS().Open(path)
 	if err != nil {
-		gfs.Close()
 		return nil, errors.Annotatef(err, "failed to open GridFS file %q", path)
 	}
-	return &gridfsFile{
-		GridFile: file,
-		gfs:      gfs,
-	}, nil
+	return file, nil
 }
 
 // Put is defined on ResourceStorage.
 func (g *gridFSStorage) Put(path string, r io.Reader, length int64) (checksum string, err error) {
-	gfs := g.gridFS()
-	defer gfs.Close()
-	file, err := gfs.Create(path)
+	file, err := g.gridFS().Create(path)
 	if err != nil {
 		return "", errors.Annotatef(err, "failed to create GridFS file %q", path)
 	}
@@ -108,7 +73,5 @@ func (g *gridFSStorage) Put(path string, r io.Reader, length int64) (checksum st
 
 // Remove is defined on ResourceStorage.
 func (g *gridFSStorage) Remove(path string) error {
-	gfs := g.gridFS()
-	defer gfs.Close()
-	return gfs.Remove(path)
+	return g.gridFS().Remove(path)
 }
