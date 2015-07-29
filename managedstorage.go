@@ -116,18 +116,18 @@ func (ms *managedStorage) resourceStoragePath(envUUID, user, resourcePath string
 	return storagePath, nil
 }
 
-// preprocessUpload pulls in all the data from the reader, storing it in a temp file and
+// preprocessUpload pulls in data from the reader, storing it in a temp file and
 // calculating the sha384 checksum.
 // The caller is expected to remove the temporary file if and only if we return a nil error.
 func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
-	f *os.File, hash string, err error,
+	f *os.File, n int64, hash string, err error,
 ) {
 	sha384hash := sha512.New384()
 	// Set up a chain of readers to pull in the data and calculate the checksum.
 	rdr := io.TeeReader(r, sha384hash)
 	f, err = ioutil.TempFile(os.TempDir(), "juju-resource")
 	if err != nil {
-		return nil, "", err
+		return nil, -1, "", err
 	}
 	tempFilename := f.Name()
 	// Add a cleanup function to remove the data file if we exit with an error.
@@ -137,17 +137,20 @@ func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
 			os.Remove(tempFilename)
 		}
 	}()
+	if length >= 0 {
+		rdr = &io.LimitedReader{rdr, length}
+	}
 	// Write the data to a temp file.
-	_, err = io.CopyN(f, rdr, length)
+	length, err = io.Copy(f, rdr)
 	if err != nil {
-		return nil, "", err
+		return nil, -1, "", err
 	}
 	// Reset the file so when we return it, it can be read from to get the data.
 	_, err = f.Seek(0, 0)
 	if err != nil {
-		return nil, "", err
+		return nil, -1, "", err
 	}
-	return f, fmt.Sprintf("%x", sha384hash.Sum(nil)), nil
+	return f, length, fmt.Sprintf("%x", sha384hash.Sum(nil)), nil
 }
 
 // GetForEnvironment is defined on the ManagedStorage interface.
@@ -217,7 +220,7 @@ func (ms *managedStorage) PutForEnvironment(envUUID, path string, r io.Reader, l
 // putForEnvironment is the internal implementation for both the above
 // methods. It checks the hash if checkHash is non-nil.
 func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, length int64, checkHash string) (putError error) {
-	dataFile, hash, err := ms.preprocessUpload(r, length)
+	dataFile, length, hash, err := ms.preprocessUpload(r, length)
 	if err != nil {
 		return errors.Annotate(err, "cannot calculate data checksums")
 	}

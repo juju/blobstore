@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -266,6 +267,35 @@ func (s *managedStorageSuite) TestPutForEnvironmentAndCheckHash(c *gc.C) {
 	sha384Hash = calculateCheckSum(c, 0, int64(len(blob)), blob)
 	err = s.managedStorage.PutForEnvironmentAndCheckHash("env", "/some/path", rdr, int64(len(blob)), sha384Hash)
 	c.Assert(err, gc.IsNil)
+}
+
+func (s *managedStorageSuite) TestPutForEnvironmentAndCheckHashEmptyHash(c *gc.C) {
+	// Passing "" as the hash to PutForEnvironmentAndCheckHash will elide
+	// the hash check.
+	rdr := strings.NewReader("data")
+	err := s.managedStorage.PutForEnvironmentAndCheckHash("env", "/some/path", rdr, int64(rdr.Len()), "")
+	c.Assert(err, jc.ErrorIsNil)
+}
+
+func (s *managedStorageSuite) TestPutForEnvironmentUnknownLen(c *gc.C) {
+	// Passing -1 for the size of the data directs PutForEnvironment
+	// to read in the whole amount.
+	blob := []byte("data")
+	rdr := bytes.NewReader(blob)
+	err := s.managedStorage.PutForEnvironment("env", "/some/path", rdr, -1)
+	c.Assert(err, jc.ErrorIsNil)
+	s.assertGet(c, "/some/path", blob)
+}
+
+func (s *managedStorageSuite) TestPutForEnvironmentOverLong(c *gc.C) {
+	// Passing a size to PutForEnvironment that exceeds the actual
+	// size of the data will result in metadata recording the actual
+	// size.
+	blob := []byte("data")
+	rdr := bytes.NewReader(blob)
+	err := s.managedStorage.PutForEnvironment("env", "/some/path", rdr, int64(len(blob)+1))
+	c.Assert(err, jc.ErrorIsNil)
+	s.assertGet(c, "/some/path", blob)
 }
 
 func (s *managedStorageSuite) assertGet(c *gc.C, path string, blob []byte) {
