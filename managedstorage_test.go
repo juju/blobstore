@@ -20,11 +20,10 @@ import (
 	txntesting "github.com/juju/txn/testing"
 	"github.com/juju/utils"
 	gc "gopkg.in/check.v1"
+	"gopkg.in/juju/blobstore.v2"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
-
-	"github.com/juju/blobstore"
 )
 
 var _ = gc.Suite(&managedStorageSuite{})
