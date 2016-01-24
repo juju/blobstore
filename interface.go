@@ -51,41 +51,41 @@ type ResourceCatalog interface {
 	Remove(id string) (wasDeleted bool, path string, err error)
 }
 
-// ManagedStorage instances persist data for an environment, for a user, or globally.
-// (Only environment storage is currently implemented).
+// ManagedStorage instances persist data for an model, for a user, or globally.
+// (Only model storage is currently implemented).
 type ManagedStorage interface {
-	// GetForEnvironment returns a reader for data at path, namespaced to the environment.
+	// GetForModel returns a reader for data at path, namespaced to the model.
 	// If the data is still being uploaded and is not fully written yet,
 	// an ErrUploadPending error is returned. This means the path is valid but the caller
 	// should try again to retrieve the data.
-	GetForEnvironment(envUUID, path string) (r io.ReadCloser, length int64, err error)
+	GetForModel(modelUUID, path string) (r io.ReadCloser, length int64, err error)
 
-	// PutForEnvironment stores data from reader at path, namespaced to the environment.
+	// PutForModel stores data from reader at path, namespaced to the model.
 	//
-	// PutForEnvironment is equivalent to PutForEnvironmentAndCheckHash with an empty
+	// PutForModel is equivalent to PutForModelAndCheckHash with an empty
 	// hash string.
-	PutForEnvironment(envUUID, path string, r io.Reader, length int64) error
+	PutForModel(modelUUID, path string, r io.Reader, length int64) error
 
-	// PutForEnvironmentAndCheckHash is the same as PutForEnvironment
+	// PutForModelAndCheckHash is the same as PutForModel
 	// except that it also checks that the content matches the provided
 	// hash. The hash must be hex-encoded SHA-384.
 	//
 	// If checkHash is empty, then the hash check is elided.
 	//
 	// If length is < 0, then the reader will be consumed until EOF.
-	PutForEnvironmentAndCheckHash(envUUID, path string, r io.Reader, length int64, checkHash string) error
+	PutForModelAndCheckHash(modelUUID, path string, r io.Reader, length int64, checkHash string) error
 
-	// RemoveForEnvironment deletes data at path, namespaced to the environment.
-	RemoveForEnvironment(envUUID, path string) error
+	// RemoveForModel deletes data at path, namespaced to the model.
+	RemoveForModel(modelUUID, path string) error
 
-	// PutForEnvironmentRequest requests that data, which may already exist in storage,
-	// be saved at path, namespaced to the environment. It allows callers who can
+	// PutForModelRequest requests that data, which may already exist in storage,
+	// be saved at path, namespaced to the model. It allows callers who can
 	// demonstrate proof of ownership of the data to store a reference to it without
 	// having to upload it all. If no such data exists, a NotFound error is returned
-	// and a call to EnvironmentPut is required. If matching data is found, the caller
+	// and a call to model is required. If matching data is found, the caller
 	// is returned a response indicating the random byte range to for which they must
 	// provide a checksum to complete the process.
-	PutForEnvironmentRequest(envUUID, path string, hash string) (*RequestResponse, error)
+	PutForModelRequest(modelUUID, path string, hash string) (*RequestResponse, error)
 
 	// ProofOfAccessResponse is called to respond to a Put..Request call in order to
 	// prove ownership of data for which a storage reference is created.
