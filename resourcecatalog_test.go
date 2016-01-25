@@ -10,10 +10,9 @@ import (
 	"github.com/juju/txn"
 	txntesting "github.com/juju/txn/testing"
 	gc "gopkg.in/check.v1"
+	"gopkg.in/juju/blobstore.v2"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
-
-	"github.com/juju/blobstore"
 )
 
 var _ = gc.Suite(&resourceCatalogSuite{})

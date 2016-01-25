@@ -25,21 +25,21 @@ import (
 )
 
 // ManagedResource is a catalog entry for stored data.
-// The data may be associated with a specified environment and/or user.
+// The data may be associated with a specified bucket and/or user.
 // The data is logically considered to be stored at the specified path.
 type ManagedResource struct {
-	EnvUUID string
-	User    string
-	Path    string
+	BucketUUID string
+	User       string
+	Path       string
 }
 
 // managedResourceDoc is the persistent representation of a ManagedResource.
 type managedResourceDoc struct {
 	Id         string `bson:"_id"`
-	EnvUUID    string
-	User       string
-	Path       string
-	ResourceId string
+	BucketUUID string `bson:"bucketuuid"`
+	User       string `bson:"user"`
+	Path       string `bson:"path"`
+	ResourceId string `bson:"resourceid"`
 }
 
 // managedStorage is a mongo backed ManagedResource instance.
@@ -65,7 +65,7 @@ func newManagedResourceDoc(r ManagedResource, resourceId string) managedResource
 		Id:         r.Path,
 		ResourceId: resourceId,
 		Path:       r.Path,
-		EnvUUID:    r.EnvUUID,
+		BucketUUID: r.BucketUUID,
 		User:       r.User,
 	}
 }
@@ -94,11 +94,11 @@ func NewManagedStorage(db *mgo.Database, rs ResourceStorage) ManagedStorage {
 }
 
 // resourceStoragePath returns the full path used to store a resource with resourcePath
-// in the specified environment for the specified user.
-func (ms *managedStorage) resourceStoragePath(envUUID, user, resourcePath string) (string, error) {
-	// No envUUID or user should contain "/" but we perform a sanity check just in case.
-	if strings.Index(envUUID, "/") >= 0 {
-		return "", errors.Errorf("environment UUID %q cannot contain %q", envUUID, "/")
+// in the specified bucket for the specified user.
+func (ms *managedStorage) resourceStoragePath(bucketUUID, user, resourcePath string) (string, error) {
+	// No bucketUUID or user should contain "/" but we perform a sanity check just in case.
+	if strings.Index(bucketUUID, "/") >= 0 {
+		return "", errors.Errorf("bucket UUID %q cannot contain %q", bucketUUID, "/")
 	}
 	if strings.Index(user, "/") >= 0 {
 		return "", errors.Errorf("user %q cannot contain %q", user, "/")
@@ -107,10 +107,10 @@ func (ms *managedStorage) resourceStoragePath(envUUID, user, resourcePath string
 	if user != "" {
 		storagePath = path.Join("users", user, storagePath)
 	}
-	if envUUID != "" {
-		storagePath = path.Join("environs", envUUID, storagePath)
+	if bucketUUID != "" {
+		storagePath = path.Join("buckets", bucketUUID, storagePath)
 	}
-	if user == "" && envUUID == "" {
+	if user == "" && bucketUUID == "" {
 		storagePath = path.Join("global", storagePath)
 	}
 	return storagePath, nil
@@ -153,9 +153,9 @@ func (ms *managedStorage) preprocessUpload(r io.Reader, length int64) (
 	return f, length, fmt.Sprintf("%x", sha384hash.Sum(nil)), nil
 }
 
-// GetForEnvironment is defined on the ManagedStorage interface.
-func (ms *managedStorage) GetForEnvironment(envUUID, path string) (io.ReadCloser, int64, error) {
-	managedPath, err := ms.resourceStoragePath(envUUID, "", path)
+// GetForBucket is defined on the ManagedStorage interface.
+func (ms *managedStorage) GetForBucket(bucketUUID, path string) (io.ReadCloser, int64, error) {
+	managedPath, err := ms.resourceStoragePath(bucketUUID, "", path)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -207,19 +207,19 @@ func cleanupResource(rs ResourceStorage, resourcePath string, err *error) {
 	}
 }
 
-// PutForEnvironmentAndCheckHash is defined on the ManagedStorage interface.
-func (ms *managedStorage) PutForEnvironmentAndCheckHash(envUUID, path string, r io.Reader, length int64, checkHash string) error {
-	return ms.putForEnvironment(envUUID, path, r, length, checkHash)
+// PutForBucketAndCheckHash is defined on the ManagedStorage interface.
+func (ms *managedStorage) PutForBucketAndCheckHash(bucketUUID, path string, r io.Reader, length int64, checkHash string) error {
+	return ms.putForEnvironment(bucketUUID, path, r, length, checkHash)
 }
 
-// PutForEnvironment is defined on the ManagedStorage interface.
-func (ms *managedStorage) PutForEnvironment(envUUID, path string, r io.Reader, length int64) error {
-	return ms.putForEnvironment(envUUID, path, r, length, "")
+// PutForBucket is defined on the ManagedStorage interface.
+func (ms *managedStorage) PutForBucket(bucketUUID, path string, r io.Reader, length int64) error {
+	return ms.putForEnvironment(bucketUUID, path, r, length, "")
 }
 
 // putForEnvironment is the internal implementation for both the above
 // methods. It checks the hash if checkHash is non-nil.
-func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, length int64, checkHash string) (putError error) {
+func (ms *managedStorage) putForEnvironment(bucketUUID, path string, r io.Reader, length int64, checkHash string) (putError error) {
 	dataFile, length, hash, err := ms.preprocessUpload(r, length)
 	if err != nil {
 		return errors.Annotate(err, "cannot calculate data checksums")
@@ -241,7 +241,7 @@ func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, l
 	// If there's an error saving the resource data, ensure the resource catalog is cleaned up.
 	defer cleanupResourceCatalog(ms.resourceCatalog, resourceId, &putError)
 
-	managedPath, err := ms.resourceStoragePath(envUUID, "", path)
+	managedPath, err := ms.resourceStoragePath(bucketUUID, "", path)
 	if err != nil {
 		return err
 	}
@@ -278,14 +278,14 @@ func (ms *managedStorage) putForEnvironment(envUUID, path string, r io.Reader, l
 	}
 	// Resource data is saved, resource catalog entry is created/updated, now write the
 	// managed storage entry.
-	return ms.putResourceReference(envUUID, managedPath, resourceId)
+	return ms.putResourceReference(bucketUUID, managedPath, resourceId)
 }
 
 // putResourceReference saves a managed resource record for the given path and resource id.
-func (ms *managedStorage) putResourceReference(envUUID, managedPath, resourceId string) error {
+func (ms *managedStorage) putResourceReference(bucketUUID, managedPath, resourceId string) error {
 	managedResource := ManagedResource{
-		EnvUUID: envUUID,
-		Path:    managedPath,
+		BucketUUID: bucketUUID,
+		Path:       managedPath,
 	}
 	existingResourceId, err := ms.putManagedResource(managedResource, resourceId)
 	if err != nil {
@@ -331,15 +331,15 @@ func (ms *managedStorage) putManagedResource(managedResource ManagedResource, re
 	return existingResourceId, nil
 }
 
-// RemoveForEnvironment is defined on the ManagedStorage interface.
-func (ms *managedStorage) RemoveForEnvironment(envUUID, path string) (err error) {
+// RemoveForBucket is defined on the ManagedStorage interface.
+func (ms *managedStorage) RemoveForBucket(bucketUUID, path string) (err error) {
 	// This operation may leave the db in an inconsistent state if any of the
 	// latter steps fail, but not in a way that will impact external users.
 	// eg if the managed resource record is removed, but the subsequent call to
 	// remove the resource catalog entry fails, the resource at the path will
 	// not be visible anymore, but the data will still be stored.
 
-	managedPath, err := ms.resourceStoragePath(envUUID, "", path)
+	managedPath, err := ms.resourceStoragePath(bucketUUID, "", path)
 	if err != nil {
 		return err
 	}
@@ -430,7 +430,7 @@ type putResponse struct {
 type PutRequest struct {
 	expiryTime   time.Time
 	resourceId   string
-	envUUID      string
+	bucketUUID   string
 	user         string
 	path         string
 	expectedHash string
@@ -488,8 +488,8 @@ func (ms *managedStorage) calculateExpectedHash(resourceId, path string) (string
 	return sha384hashHex, start, rangeLength, nil
 }
 
-// PutForEnvironmentRequest is defined on the ManagedStorage interface.
-func (ms *managedStorage) PutForEnvironmentRequest(envUUID, path string, hash string) (*RequestResponse, error) {
+// PutForBucketRequest is defined on the ManagedStorage interface.
+func (ms *managedStorage) PutForBucketRequest(bucketUUID, path string, hash string) (*RequestResponse, error) {
 	ms.requestMutex.Lock()
 	defer ms.requestMutex.Unlock()
 
@@ -508,7 +508,7 @@ func (ms *managedStorage) PutForEnvironmentRequest(envUUID, path string, hash st
 	ms.nextRequestId++
 	putRequest := PutRequest{
 		expiryTime:   time.Now().Add(requestExpiry),
-		envUUID:      envUUID,
+		bucketUUID:   bucketUUID,
 		path:         path,
 		resourceId:   resourceId,
 		expectedHash: expectedHash,
@@ -606,9 +606,9 @@ func (ms *managedStorage) ProofOfAccessResponse(response putResponse) error {
 		return ErrResourceDeleted
 	}
 
-	managedPath, err := ms.resourceStoragePath(request.envUUID, request.user, request.path)
+	managedPath, err := ms.resourceStoragePath(request.bucketUUID, request.user, request.path)
 	if err != nil {
 		return err
 	}
-	return ms.putResourceReference(request.envUUID, managedPath, request.resourceId)
+	return ms.putResourceReference(request.bucketUUID, managedPath, request.resourceId)
 }

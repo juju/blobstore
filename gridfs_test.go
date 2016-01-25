@@ -11,8 +11,7 @@ import (
 
 	"github.com/juju/testing"
 	gc "gopkg.in/check.v1"
-
-	"github.com/juju/blobstore"
+	"gopkg.in/juju/blobstore.v2"
 )
 
 var _ = gc.Suite(&gridfsSuite{})

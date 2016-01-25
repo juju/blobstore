@@ -20,11 +20,10 @@ import (
 	txntesting "github.com/juju/txn/testing"
 	"github.com/juju/utils"
 	gc "gopkg.in/check.v1"
+	"gopkg.in/juju/blobstore.v2"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
-
-	"github.com/juju/blobstore"
 )
 
 var _ = gc.Suite(&managedStorageSuite{})
@@ -70,45 +69,45 @@ func (s *managedStorageSuite) TearDownTest(c *gc.C) {
 
 func (s *managedStorageSuite) TestResourceStoragePath(c *gc.C) {
 	for _, test := range []struct {
-		envUUID     string
+		bucketUUID  string
 		user        string
 		path        string
 		storagePath string
 		error       string
 	}{
 		{
-			envUUID:     "",
+			bucketUUID:  "",
 			user:        "",
 			path:        "/path/to/blob",
 			storagePath: "global/path/to/blob",
 		}, {
-			envUUID:     "env",
+			bucketUUID:  "bucketuuid",
 			user:        "",
 			path:        "/path/to/blob",
-			storagePath: "environs/env/path/to/blob",
+			storagePath: "buckets/bucketuuid/path/to/blob",
 		}, {
-			envUUID:     "",
+			bucketUUID:  "",
 			user:        "user",
 			path:        "/path/to/blob",
 			storagePath: "users/user/path/to/blob",
 		}, {
-			envUUID:     "env",
+			bucketUUID:  "bucketuuid",
 			user:        "user",
 			path:        "/path/to/blob",
-			storagePath: "environs/env/users/user/path/to/blob",
+			storagePath: "buckets/bucketuuid/users/user/path/to/blob",
 		}, {
-			envUUID: "env/123",
-			user:    "user",
-			path:    "/path/to/blob",
-			error:   `.* cannot contain "/"`,
+			bucketUUID: "env/123",
+			user:       "user",
+			path:       "/path/to/blob",
+			error:      `.* cannot contain "/"`,
 		}, {
-			envUUID: "env",
-			user:    "user/123",
-			path:    "/path/to/blob",
-			error:   `.* cannot contain "/"`,
+			bucketUUID: "bucketuuid",
+			user:       "user/123",
+			path:       "/path/to/blob",
+			error:      `.* cannot contain "/"`,
 		},
 	} {
-		result, err := blobstore.ResourceStoragePath(s.managedStorage, test.envUUID, test.user, test.path)
+		result, err := blobstore.ResourceStoragePath(s.managedStorage, test.bucketUUID, test.user, test.path)
 		if test.error == "" {
 			c.Check(err, gc.IsNil)
 			c.Check(result, gc.Equals, test.storagePath)
@@ -134,13 +133,13 @@ func (s *managedStorageSuite) TestGetPendingUpload(c *gc.C) {
 	id, _, err := rc.Put("foo", 100)
 	c.Assert(err, gc.IsNil)
 	managedResource := blobstore.ManagedResource{
-		EnvUUID: "env",
-		User:    "user",
-		Path:    "environs/env/path/to/blob",
+		BucketUUID: "bucketuuid",
+		User:       "user",
+		Path:       "buckets/bucketuuid/path/to/blob",
 	}
 	_, err = blobstore.PutManagedResource(s.managedStorage, managedResource, id)
 	c.Assert(err, gc.IsNil)
-	_, _, err = s.managedStorage.GetForEnvironment("env", "/path/to/blob")
+	_, _, err = s.managedStorage.GetForBucket("bucketuuid", "/path/to/blob")
 	c.Assert(err, gc.Equals, blobstore.ErrUploadPending)
 }
 
@@ -154,19 +153,19 @@ func (s *managedStorageSuite) TestPutPendingUpload(c *gc.C) {
 	c.Assert(err, gc.IsNil)
 	c.Assert(path, gc.Equals, "")
 	managedResource := blobstore.ManagedResource{
-		EnvUUID: "env",
-		User:    "user",
-		Path:    "environs/env/path/to/blob",
+		BucketUUID: "bucketuuid",
+		User:       "user",
+		Path:       "buckets/bucketuuid/path/to/blob",
 	}
 	c.Assert(err, gc.IsNil)
 
 	_, err = blobstore.PutManagedResource(s.managedStorage, managedResource, id)
-	_, _, err = s.managedStorage.GetForEnvironment("env", "/path/to/blob")
+	_, _, err = s.managedStorage.GetForBucket("bucketuuid", "/path/to/blob")
 	c.Assert(errors.Cause(err), gc.Equals, blobstore.ErrUploadPending)
 
 	// Despite the upload being pending, a second concurrent upload will succeed.
 	rdr := bytes.NewReader([]byte("abc"))
-	err = s.managedStorage.PutForEnvironment("env", "/path/to/blob", rdr, 3)
+	err = s.managedStorage.PutForBucket("bucketuuid", "/path/to/blob", rdr, 3)
 	c.Assert(err, gc.IsNil)
 	s.assertGet(c, "/path/to/blob", []byte("abc"))
 }
@@ -174,12 +173,12 @@ func (s *managedStorageSuite) TestPutPendingUpload(c *gc.C) {
 func (s *managedStorageSuite) assertPut(c *gc.C, path string, blob []byte) string {
 	// Put the data.
 	rdr := bytes.NewReader(blob)
-	err := s.managedStorage.PutForEnvironment("env", path, rdr, int64(len(blob)))
+	err := s.managedStorage.PutForBucket("bucketuuid", path, rdr, int64(len(blob)))
 	c.Assert(err, gc.IsNil)
 
 	// Load the managed resource record.
 	var mrDoc managedResourceDocStub
-	err = s.db.C("managedStoredResources").Find(bson.D{{"path", "environs/env" + path}}).One(&mrDoc)
+	err = s.db.C("managedStoredResources").Find(bson.D{{"path", "buckets/bucketuuid" + path}}).One(&mrDoc)
 	c.Assert(err, gc.IsNil)
 
 	// Load the corresponding resource catalog record.
@@ -247,7 +246,7 @@ func (s *managedStorageSuite) TestPutManagedResourceFail(c *gc.C) {
 	// Attempt to put the data.
 	blob := []byte("data")
 	rdr := bytes.NewReader(blob)
-	err := s.managedStorage.PutForEnvironment("env", "/some/path", rdr, int64(len(blob)))
+	err := s.managedStorage.PutForBucket("bucketuuid", "/some/path", rdr, int64(len(blob)))
 	c.Assert(err, gc.ErrorMatches, "cannot update managed resource catalog: some error")
 
 	// Now ensure there's no blob data left behind in storage, nor a resource catalog record.
@@ -260,46 +259,46 @@ func (s *managedStorageSuite) TestPutForEnvironmentAndCheckHash(c *gc.C) {
 	blob := []byte("data")
 	rdr := bytes.NewReader(blob)
 	sha384Hash := calculateCheckSum(c, 0, 5, []byte("wrong"))
-	err := s.managedStorage.PutForEnvironmentAndCheckHash("env", "/some/path", rdr, int64(len(blob)), sha384Hash)
+	err := s.managedStorage.PutForBucketAndCheckHash("bucketuuid", "/some/path", rdr, int64(len(blob)), sha384Hash)
 	c.Assert(err, gc.ErrorMatches, "hash mismatch")
 
 	rdr.Seek(0, 0)
 	sha384Hash = calculateCheckSum(c, 0, int64(len(blob)), blob)
-	err = s.managedStorage.PutForEnvironmentAndCheckHash("env", "/some/path", rdr, int64(len(blob)), sha384Hash)
+	err = s.managedStorage.PutForBucketAndCheckHash("bucketuuid", "/some/path", rdr, int64(len(blob)), sha384Hash)
 	c.Assert(err, gc.IsNil)
 }
 
 func (s *managedStorageSuite) TestPutForEnvironmentAndCheckHashEmptyHash(c *gc.C) {
-	// Passing "" as the hash to PutForEnvironmentAndCheckHash will elide
+	// Passing "" as the hash to PutForBucketAndCheckHash will elide
 	// the hash check.
 	rdr := strings.NewReader("data")
-	err := s.managedStorage.PutForEnvironmentAndCheckHash("env", "/some/path", rdr, int64(rdr.Len()), "")
+	err := s.managedStorage.PutForBucketAndCheckHash("bucketuuid", "/some/path", rdr, int64(rdr.Len()), "")
 	c.Assert(err, jc.ErrorIsNil)
 }
 
 func (s *managedStorageSuite) TestPutForEnvironmentUnknownLen(c *gc.C) {
-	// Passing -1 for the size of the data directs PutForEnvironment
+	// Passing -1 for the size of the data directs PutForBucket
 	// to read in the whole amount.
 	blob := []byte("data")
 	rdr := bytes.NewReader(blob)
-	err := s.managedStorage.PutForEnvironment("env", "/some/path", rdr, -1)
+	err := s.managedStorage.PutForBucket("bucketuuid", "/some/path", rdr, -1)
 	c.Assert(err, jc.ErrorIsNil)
 	s.assertGet(c, "/some/path", blob)
 }
 
 func (s *managedStorageSuite) TestPutForEnvironmentOverLong(c *gc.C) {
-	// Passing a size to PutForEnvironment that exceeds the actual
+	// Passing a size to PutForBucket that exceeds the actual
 	// size of the data will result in metadata recording the actual
 	// size.
 	blob := []byte("data")
 	rdr := bytes.NewReader(blob)
-	err := s.managedStorage.PutForEnvironment("env", "/some/path", rdr, int64(len(blob)+1))
+	err := s.managedStorage.PutForBucket("bucketuuid", "/some/path", rdr, int64(len(blob)+1))
 	c.Assert(err, jc.ErrorIsNil)
 	s.assertGet(c, "/some/path", blob)
 }
 
 func (s *managedStorageSuite) assertGet(c *gc.C, path string, blob []byte) {
-	r, length, err := s.managedStorage.GetForEnvironment("env", path)
+	r, length, err := s.managedStorage.GetForBucket("bucketuuid", path)
 	c.Assert(err, gc.IsNil)
 	defer r.Close()
 	data, err := ioutil.ReadAll(r)
@@ -315,18 +314,18 @@ func (s *managedStorageSuite) TestGet(c *gc.C) {
 }
 
 func (s *managedStorageSuite) TestGetNonExistent(c *gc.C) {
-	_, _, err := s.managedStorage.GetForEnvironment("env", "/path/to/nowhere")
+	_, _, err := s.managedStorage.GetForBucket("bucketuuid", "/path/to/nowhere")
 	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
 
 func (s *managedStorageSuite) TestRemove(c *gc.C) {
 	blob := []byte("some resource")
 	resPath := s.assertPut(c, "/path/to/blob", blob)
-	err := s.managedStorage.RemoveForEnvironment("env", "/path/to/blob")
+	err := s.managedStorage.RemoveForBucket("bucketuuid", "/path/to/blob")
 	c.Assert(err, gc.IsNil)
 
 	// Check the data and catalog entry really are removed.
-	_, _, err = s.managedStorage.GetForEnvironment("env", "path/to/blob")
+	_, _, err = s.managedStorage.GetForBucket("bucketuuid", "path/to/blob")
 	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 	_, err = s.resourceStorage.Get(resPath)
 	c.Assert(err, gc.NotNil)
@@ -335,7 +334,7 @@ func (s *managedStorageSuite) TestRemove(c *gc.C) {
 }
 
 func (s *managedStorageSuite) TestRemoveNonExistent(c *gc.C) {
-	err := s.managedStorage.RemoveForEnvironment("env", "/path/to/nowhere")
+	err := s.managedStorage.RemoveForBucket("bucketuuid", "/path/to/nowhere")
 	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
 
@@ -344,7 +343,7 @@ func (s *managedStorageSuite) TestRemoveDifferentPathKeepsData(c *gc.C) {
 	s.assertPut(c, "/path/to/blob", blob)
 	s.assertPut(c, "/anotherpath/to/blob", blob)
 	s.assertResourceCatalogCount(c, 1)
-	err := s.managedStorage.RemoveForEnvironment("env", "/path/to/blob")
+	err := s.managedStorage.RemoveForBucket("bucketuuid", "/path/to/blob")
 	c.Assert(err, gc.IsNil)
 	s.assertGet(c, "/anotherpath/to/blob", blob)
 	s.assertResourceCatalogCount(c, 1)
@@ -365,7 +364,7 @@ func (s *managedStorageSuite) TestPutDeleteRace(c *gc.C) {
 	blob := []byte("some resource")
 	s.assertPut(c, "/path/to/blob", blob)
 	beforeFunc := func() {
-		err := s.managedStorage.RemoveForEnvironment("env", "/path/to/blob")
+		err := s.managedStorage.RemoveForBucket("bucketuuid", "/path/to/blob")
 		c.Assert(err, gc.IsNil)
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFunc).Check()
@@ -390,7 +389,7 @@ func (s *managedStorageSuite) TestPutRaceWhereCatalogEntryRemoved(c *gc.C) {
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFunc...).Check()
 	rdr := bytes.NewReader(blob)
-	err := s.managedStorage.PutForEnvironment("env", "/path/to/blob", rdr, int64(len(blob)))
+	err := s.managedStorage.PutForBucket("bucketuuid", "/path/to/blob", rdr, int64(len(blob)))
 	c.Assert(err, gc.ErrorMatches, "unexpected deletion .*")
 	s.assertResourceCatalogCount(c, 0)
 }
@@ -399,18 +398,18 @@ func (s *managedStorageSuite) TestRemoveRace(c *gc.C) {
 	blob := []byte("some resource")
 	s.assertPut(c, "/path/to/blob", blob)
 	beforeFunc := func() {
-		err := s.managedStorage.RemoveForEnvironment("env", "/path/to/blob")
+		err := s.managedStorage.RemoveForBucket("bucketuuid", "/path/to/blob")
 		c.Assert(err, gc.IsNil)
 	}
 	defer txntesting.SetBeforeHooks(c, s.txnRunner, beforeFunc).Check()
-	err := s.managedStorage.RemoveForEnvironment("env", "/path/to/blob")
+	err := s.managedStorage.RemoveForBucket("bucketuuid", "/path/to/blob")
 	c.Assert(err, jc.Satisfies, errors.IsNotFound)
-	_, _, err = s.managedStorage.GetForEnvironment("env", "/path/to/blob")
+	_, _, err = s.managedStorage.GetForBucket("bucketuuid", "/path/to/blob")
 	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
 
 func (s *managedStorageSuite) TestPutRequestNotFound(c *gc.C) {
-	_, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", "sha384")
+	_, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", "sha384")
 	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
 
@@ -422,7 +421,7 @@ func (s *managedStorageSuite) putTestRandomBlob(c *gc.C, path string) (blob []by
 
 func (s *managedStorageSuite) putTestBlob(c *gc.C, path string, blob []byte) (sha384HashHex string) {
 	rdr := bytes.NewReader(blob)
-	err := s.managedStorage.PutForEnvironment("env", path, rdr, int64(len(blob)))
+	err := s.managedStorage.PutForBucket("bucketuuid", path, rdr, int64(len(blob)))
 	c.Assert(err, gc.IsNil)
 	s.assertGet(c, path, blob)
 	sha384HashHex = calculateCheckSum(c, 0, int64(len(blob)), blob)
@@ -440,7 +439,7 @@ func calculateCheckSum(c *gc.C, start, length int64, blob []byte) (sha384HashHex
 
 func (s *managedStorageSuite) TestPutRequestResponseHashMismatch(c *gc.C) {
 	_, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
-	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
+	reqResp, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	response := blobstore.NewPutResponse(reqResp.RequestId, "notsha384")
 	err = s.managedStorage.ProofOfAccessResponse(response)
@@ -454,10 +453,10 @@ func (s *managedStorageSuite) assertPutRequestSingle(c *gc.C, blob []byte, resou
 		blob = []byte(id)
 	}
 	rdr := bytes.NewReader(blob)
-	err := s.managedStorage.PutForEnvironment("env", "path/to/blob", rdr, int64(len(blob)))
+	err := s.managedStorage.PutForBucket("bucketuuid", "path/to/blob", rdr, int64(len(blob)))
 	c.Assert(err, gc.IsNil)
 	sha384Hash := calculateCheckSum(c, 0, int64(len(blob)), blob)
-	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
+	reqResp, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
 	response := blobstore.NewPutResponse(reqResp.RequestId, sha384Response)
@@ -546,7 +545,7 @@ func (s *managedStorageSuite) checkPutResponse(c *gc.C, index int, wg *sync.Wait
 		} else {
 			c.Check(err, gc.IsNil)
 			if err == nil {
-				r, length, err := s.managedStorage.GetForEnvironment("env", fmt.Sprintf("path/to/blob%d", index))
+				r, length, err := s.managedStorage.GetForBucket("bucketuuid", fmt.Sprintf("path/to/blob%d", index))
 				c.Check(err, gc.IsNil)
 				if err == nil {
 					data, err := ioutil.ReadAll(r)
@@ -568,7 +567,7 @@ func (s *managedStorageSuite) queuePutRequests(c *gc.C, done chan struct{}) {
 		for i := 0; i < 10; i++ {
 			blobPath := fmt.Sprintf("path/to/blob%d", i)
 			blob, sha384Hash := s.putTestRandomBlob(c, blobPath)
-			reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
+			reqResp, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", sha384Hash)
 			c.Assert(err, gc.IsNil)
 			// Let one request timeout
 			if i == 3 {
@@ -615,7 +614,7 @@ func (s *managedStorageSuite) TestPutRequestExpired(c *gc.C) {
 	ch := make(chan struct{})
 	s.PatchValue(blobstore.AfterFunc, patchedAfterFunc(ch))
 	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
-	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
+	reqResp, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
 	// Trigger the request timeout.
@@ -631,7 +630,7 @@ func (s *managedStorageSuite) TestPutRequestExpired(c *gc.C) {
 func (s *managedStorageSuite) TestPutRequestExpiredWithRealTimeAfter(c *gc.C) {
 	s.PatchValue(blobstore.RequestExpiry, 5*time.Millisecond)
 	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
-	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
+	reqResp, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
 	// Wait for request timer to trigger.
@@ -647,10 +646,10 @@ func (s *managedStorageSuite) TestPutRequestExpiredMulti(c *gc.C) {
 	ch := make(chan struct{})
 	s.PatchValue(blobstore.AfterFunc, patchedAfterFunc(ch))
 	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
-	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
+	reqResp, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
-	reqResp2, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob2", sha384Hash)
+	reqResp2, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob2", sha384Hash)
 	c.Assert(err, gc.IsNil)
 	sha384Response2 := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
 	// Trigger the request timeouts.
@@ -669,9 +668,9 @@ func (s *managedStorageSuite) TestPutRequestExpiredMulti(c *gc.C) {
 
 func (s *managedStorageSuite) TestPutRequestDeleted(c *gc.C) {
 	blob, sha384Hash := s.putTestRandomBlob(c, "path/to/blob")
-	reqResp, err := s.managedStorage.PutForEnvironmentRequest("env", "path/to/blob", sha384Hash)
+	reqResp, err := s.managedStorage.PutForBucketRequest("bucketuuid", "path/to/blob", sha384Hash)
 	c.Assert(err, gc.IsNil)
-	err = s.managedStorage.RemoveForEnvironment("env", "path/to/blob")
+	err = s.managedStorage.RemoveForBucket("bucketuuid", "path/to/blob")
 	c.Assert(err, gc.IsNil)
 
 	sha384Response := calculateCheckSum(c, reqResp.RangeStart, reqResp.RangeLength, blob)
@@ -690,7 +689,7 @@ func (s *managedStorageSuite) TestPutMultiSameData(c *gc.C) {
 			go func() {
 				defer wg.Done()
 				rdr := bytes.NewReader(blob)
-				err := s.managedStorage.PutForEnvironment("env", "path", rdr, int64(len(blob)))
+				err := s.managedStorage.PutForBucket("bucketuuid", "path", rdr, int64(len(blob)))
 				c.Assert(err, gc.IsNil)
 			}()
 		}
