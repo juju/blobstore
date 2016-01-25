@@ -51,41 +51,41 @@ type ResourceCatalog interface {
 	Remove(id string) (wasDeleted bool, path string, err error)
 }
 
-// ManagedStorage instances persist data for an model, for a user, or globally.
-// (Only model storage is currently implemented).
+// ManagedStorage instances persist data for a bucket, for a user, or globally.
+// (Only bucket storage is currently implemented).
 type ManagedStorage interface {
-	// GetForModel returns a reader for data at path, namespaced to the model.
+	// GetForBucket returns a reader for data at path, namespaced to the bucket.
 	// If the data is still being uploaded and is not fully written yet,
 	// an ErrUploadPending error is returned. This means the path is valid but the caller
 	// should try again to retrieve the data.
-	GetForModel(modelUUID, path string) (r io.ReadCloser, length int64, err error)
+	GetForBucket(bucketUUID, path string) (r io.ReadCloser, length int64, err error)
 
-	// PutForModel stores data from reader at path, namespaced to the model.
+	// PutForBucket stores data from reader at path, namespaced to the bucket.
 	//
-	// PutForModel is equivalent to PutForModelAndCheckHash with an empty
+	// PutForBucket is equivalent to PutForBucketAndCheckHash with an empty
 	// hash string.
-	PutForModel(modelUUID, path string, r io.Reader, length int64) error
+	PutForBucket(bucketUUID, path string, r io.Reader, length int64) error
 
-	// PutForModelAndCheckHash is the same as PutForModel
+	// PutForBucketAndCheckHash is the same as PutForBucket
 	// except that it also checks that the content matches the provided
 	// hash. The hash must be hex-encoded SHA-384.
 	//
 	// If checkHash is empty, then the hash check is elided.
 	//
 	// If length is < 0, then the reader will be consumed until EOF.
-	PutForModelAndCheckHash(modelUUID, path string, r io.Reader, length int64, checkHash string) error
+	PutForBucketAndCheckHash(bucketUUID, path string, r io.Reader, length int64, checkHash string) error
 
-	// RemoveForModel deletes data at path, namespaced to the model.
-	RemoveForModel(modelUUID, path string) error
+	// RemoveForBucket deletes data at path, namespaced to the bucket.
+	RemoveForBucket(bucketUUID, path string) error
 
-	// PutForModelRequest requests that data, which may already exist in storage,
-	// be saved at path, namespaced to the model. It allows callers who can
+	// PutForBucketRequest requests that data, which may already exist in storage,
+	// be saved at path, namespaced to the bucket. It allows callers who can
 	// demonstrate proof of ownership of the data to store a reference to it without
 	// having to upload it all. If no such data exists, a NotFound error is returned
-	// and a call to model is required. If matching data is found, the caller
+	// and a call to bucket is required. If matching data is found, the caller
 	// is returned a response indicating the random byte range to for which they must
 	// provide a checksum to complete the process.
-	PutForModelRequest(modelUUID, path string, hash string) (*RequestResponse, error)
+	PutForBucketRequest(bucketUUID, path string, hash string) (*RequestResponse, error)
 
 	// ProofOfAccessResponse is called to respond to a Put..Request call in order to
 	// prove ownership of data for which a storage reference is created.

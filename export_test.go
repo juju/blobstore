@@ -20,8 +20,8 @@ func PutManagedResource(ms ManagedStorage, managedResource ManagedResource, id s
 	return ms.(*managedStorage).putManagedResource(managedResource, id)
 }
 
-func ResourceStoragePath(ms ManagedStorage, modelUUID, user, resourcePath string) (string, error) {
-	return ms.(*managedStorage).resourceStoragePath(modelUUID, user, resourcePath)
+func ResourceStoragePath(ms ManagedStorage, bucketUUID, user, resourcePath string) (string, error) {
+	return ms.(*managedStorage).resourceStoragePath(bucketUUID, user, resourcePath)
 }
 
 func RequestQueueLength(ms ManagedStorage) int {
