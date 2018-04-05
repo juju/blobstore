@@ -4,6 +4,8 @@
 package blobstore_test
 
 import (
+	"time"
+
 	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
@@ -43,7 +45,10 @@ func (s *resourceCatalogSuite) SetUpTest(c *gc.C) {
 	s.rCatalog = blobstore.NewResourceCatalog(db)
 
 	// For testing, we need to ensure there's a single txnRunner for all operations.
-	s.txnRunner = txn.NewRunner(txn.RunnerParams{Database: db})
+	s.txnRunner = txn.NewRunner(txn.RunnerParams{
+		Database: db,
+		Clock: testing.NewClock(time.Now()),
+	})
 	txnRunnerFunc := func(db *mgo.Database) txn.Runner {
 		return s.txnRunner
 	}

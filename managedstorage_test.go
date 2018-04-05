@@ -55,7 +55,10 @@ func (s *managedStorageSuite) SetUpTest(c *gc.C) {
 	s.managedStorage = blobstore.NewManagedStorage(s.db, s.resourceStorage)
 
 	// For testing, we need to ensure there's a single txnRunner for all operations.
-	s.txnRunner = jujutxn.NewRunner(jujutxn.RunnerParams{Database: s.db})
+	s.txnRunner = jujutxn.NewRunner(jujutxn.RunnerParams{
+		Database: s.db,
+		Clock: testing.NewClock(time.Now()),
+	})
 	txnRunnerFunc := func(db *mgo.Database) jujutxn.Runner {
 		return s.txnRunner
 	}

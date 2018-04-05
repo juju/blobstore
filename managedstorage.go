@@ -17,6 +17,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/juju/utils"
+	"github.com/juju/utils/clock"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
@@ -310,7 +311,10 @@ func (ms *managedStorage) putResourceReference(bucketUUID, managedPath, resource
 
 // Override for testing.
 var txnRunner = func(db *mgo.Database) jujutxn.Runner {
-	return jujutxn.NewRunner(jujutxn.RunnerParams{Database: db})
+	return jujutxn.NewRunner(jujutxn.RunnerParams{
+		Database: db,
+		Clock: clock.WallClock,
+	})
 }
 
 // putManagedResource saves the managed resource record and returns the resource id of any
