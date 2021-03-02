@@ -9,9 +9,9 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/juju/blobstore/v2"
 	"github.com/juju/testing"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/blobstore.v2"
 )
 
 var _ = gc.Suite(&gridfsSuite{})
