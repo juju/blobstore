@@ -8,7 +8,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
-	"gopkg.in/mgo.v2"
+	"github.com/juju/mgo/v2"
 )
 
 var logger = loggo.GetLogger("juju.storage")
