@@ -19,9 +19,8 @@ import (
 	"github.com/juju/mgo/v2"
 	"github.com/juju/mgo/v2/bson"
 	"github.com/juju/mgo/v2/txn"
-	"github.com/juju/utils"
-
-	jujutxn "github.com/juju/txn"
+	jujutxn "github.com/juju/txn/v2"
+	"github.com/juju/utils/v3"
 )
 
 // ManagedResource is a catalog entry for stored data.
