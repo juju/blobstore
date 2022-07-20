@@ -7,20 +7,21 @@ import (
 	"github.com/juju/errors"
 	"github.com/juju/mgo/v3"
 	"github.com/juju/mgo/v3/bson"
+	mgotesting "github.com/juju/mgo/v3/testing"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/txn/v3"
 	txntesting "github.com/juju/txn/v3/testing"
 	gc "gopkg.in/check.v1"
 
-	"github.com/juju/blobstore/v2"
+	"github.com/juju/blobstore/v3"
 )
 
 var _ = gc.Suite(&resourceCatalogSuite{})
 
 type resourceCatalogSuite struct {
 	testing.IsolationSuite
-	testing.MgoSuite
+	mgotesting.MgoSuite
 	txnRunner  txn.Runner
 	rCatalog   blobstore.ResourceCatalog
 	collection *mgo.Collection

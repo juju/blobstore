@@ -6,9 +6,9 @@ package blobstore_test
 import (
 	"testing"
 
-	gitjujutesting "github.com/juju/testing"
+	mgotesting "github.com/juju/mgo/v3/testing"
 )
 
 func Test(t *testing.T) {
-	gitjujutesting.MgoTestPackage(t, nil)
+	mgotesting.MgoTestPackage(t, nil)
 }

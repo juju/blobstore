@@ -9,16 +9,18 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/juju/blobstore/v2"
+	mgotesting "github.com/juju/mgo/v3/testing"
 	"github.com/juju/testing"
 	gc "gopkg.in/check.v1"
+
+	"github.com/juju/blobstore/v3"
 )
 
 var _ = gc.Suite(&gridfsSuite{})
 
 type gridfsSuite struct {
 	testing.IsolationSuite
-	testing.MgoSuite
+	mgotesting.MgoSuite
 	stor blobstore.ResourceStorage
 }
 

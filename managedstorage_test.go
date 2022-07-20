@@ -16,6 +16,7 @@ import (
 	"github.com/juju/errors"
 	"github.com/juju/mgo/v3"
 	"github.com/juju/mgo/v3/bson"
+	mgotesting "github.com/juju/mgo/v3/testing"
 	"github.com/juju/mgo/v3/txn"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
@@ -24,14 +25,14 @@ import (
 	"github.com/juju/utils/v3"
 	gc "gopkg.in/check.v1"
 
-	"github.com/juju/blobstore/v2"
+	"github.com/juju/blobstore/v3"
 )
 
 var _ = gc.Suite(&managedStorageSuite{})
 
 type managedStorageSuite struct {
 	testing.IsolationSuite
-	testing.MgoSuite
+	mgotesting.MgoSuite
 	txnRunner       jujutxn.Runner
 	managedStorage  blobstore.ManagedStorage
 	db              *mgo.Database
