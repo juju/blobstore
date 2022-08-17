@@ -309,7 +309,12 @@ func (ms *managedStorage) putResourceReference(bucketUUID, managedPath, resource
 
 // Override for testing.
 var txnRunner = func(db *mgo.Database) jujutxn.Runner {
-	return jujutxn.NewRunner(jujutxn.RunnerParams{Database: db})
+	return jujutxn.NewRunner(jujutxn.RunnerParams{
+		Database:                  db,
+		TransactionCollectionName: "txns",
+		ChangeLogName:             "-",
+		ServerSideTransactions:    true,
+	})
 }
 
 // putManagedResource saves the managed resource record and returns the resource id of any
