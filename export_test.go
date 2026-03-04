@@ -5,7 +5,6 @@ package blobstore
 
 var (
 	NewResourceCatalog = newResourceCatalog
-	NewResource        = newResource
 	TxnRunner          = &txnRunner
 	PutResourceTxn     = &putResourceTxn
 	RequestExpiry      = &requestExpiry

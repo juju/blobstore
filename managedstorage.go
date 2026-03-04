@@ -308,7 +308,7 @@ func (ms *managedStorage) putResourceReference(bucketUUID, managedPath, resource
 }
 
 // Override for testing.
-var txnRunner = func(db *mgo.Database) jujutxn.Runner {
+var txnRunner = func(db *mgo.Database) (jujutxn.Runner, error) {
 	return jujutxn.NewRunner(jujutxn.RunnerParams{
 		Database:                  db,
 		TransactionCollectionName: "txns",
@@ -328,7 +328,10 @@ func (ms *managedStorage) putManagedResource(managedResource ManagedResource, re
 		return addManagedResourceOps, err
 	}
 
-	txnRunner := txnRunner(ms.db)
+	txnRunner, err := txnRunner(ms.db)
+	if err != nil {
+		return "", err
+	}
 	if err = txnRunner.Run(buildTxn); err != nil {
 		return "", errors.Annotate(err, "cannot update managed resource catalog")
 	}
@@ -355,7 +358,10 @@ func (ms *managedStorage) RemoveForBucket(bucketUUID, path string) (err error) {
 		resourceId, removeManagedResourceOps, err = ms.removeResourceTxn(managedPath)
 		return removeManagedResourceOps, err
 	}
-	txnRunner := txnRunner(ms.db)
+	txnRunner, err := txnRunner(ms.db)
+	if err != nil {
+		return err
+	}
 	if err := txnRunner.Run(buildTxn); err != nil {
 		if err == mgo.ErrNotFound {
 			return errors.NotFoundf("resource at path %q", managedPath)
@@ -550,7 +556,7 @@ func (ms *managedStorage) processRequestExpiry(requestId int64) {
 	delete(ms.queuedRequests, requestId)
 
 	// If there are still pending requests, update the timer
-	//to trigger when the next one is due to expire.
+	// to trigger when the next one is due to expire.
 	if len(ms.queuedRequests) > 0 {
 		var lowestRequestId int64
 		for i := requestId + 1; i < ms.nextRequestId; i++ {
