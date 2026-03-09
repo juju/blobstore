@@ -68,6 +68,7 @@ github.com/juju/testing v0.0.0-20210324180055-18c50b0c2098/go.mod h1:7lxZW0B50+x
 github.com/juju/testing v0.0.0-20220202055744-1ad0816210a6/go.mod h1:QgWc2UdIPJ8t3rnvv95tFNOsQDfpXYEZDbP281o3b2c=
 github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494/go.mod h1:rUquetT0ALL48LHZhyRGvjjBH8xZaZ8dFClulKK5wK4=
 github.com/juju/testing v1.0.0/go.mod h1:rUquetT0ALL48LHZhyRGvjjBH8xZaZ8dFClulKK5wK4=
+github.com/juju/testing v1.1.0/go.mod h1:1XQGptw6JWFvRWb3ewilUdTBG0oGcoI2kdX9Z1VEzhU=
 github.com/juju/testing v1.2.0 h1:Q0wxjaxx4XPVEN+SgzxKr3d82pjmSBcuM3WndAU391c=
 github.com/juju/testing v1.2.0/go.mod h1:lqZVzNwBKAbylGZidK77ts6kIdoOkmD52+4m0ysetPo=
 github.com/juju/txn/v3 v3.2.1 h1:Tr/kuZ86PxO3liXwPgxF3fEKL5RzrGyNFYrhV53C7no=
