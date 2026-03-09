@@ -70,8 +70,8 @@ github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494/go.mod h1:rUquetT0ALL
 github.com/juju/testing v1.0.0/go.mod h1:rUquetT0ALL48LHZhyRGvjjBH8xZaZ8dFClulKK5wK4=
 github.com/juju/testing v1.2.0 h1:Q0wxjaxx4XPVEN+SgzxKr3d82pjmSBcuM3WndAU391c=
 github.com/juju/testing v1.2.0/go.mod h1:lqZVzNwBKAbylGZidK77ts6kIdoOkmD52+4m0ysetPo=
-github.com/juju/txn/v3 v3.2.0 h1:j7hLe1WHyOSESmGKf4EDv3xe1Ky1e9CIB9vt9cqkPAs=
-github.com/juju/txn/v3 v3.2.0/go.mod h1:gC3H9VEObSQhPh4zMH62sBjj2280cev1XFm2FlbFMuI=
+github.com/juju/txn/v3 v3.2.1 h1:Tr/kuZ86PxO3liXwPgxF3fEKL5RzrGyNFYrhV53C7no=
+github.com/juju/txn/v3 v3.2.1/go.mod h1:rnT4KL9iY0re0o6FqmXmOno4/FPTxUj3TJ4CSkacAKQ=
 github.com/juju/utils v0.0.0-20180424094159-2000ea4ff043/go.mod h1:6/KLg8Wz/y2KVGWEpkK9vMNGkOnu4k/cqs8Z1fKjTOk=
 github.com/juju/utils v0.0.0-20200116185830-d40c2fe10647/go.mod h1:6/KLg8Wz/y2KVGWEpkK9vMNGkOnu4k/cqs8Z1fKjTOk=
 github.com/juju/utils/v2 v2.0.0-20200923005554-4646bfea2ef1/go.mod h1:fdlDtQlzundleLLz/ggoYinEt/LmnrpNKcNTABQATNI=
