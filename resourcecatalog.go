@@ -116,10 +116,7 @@ func (rc *resourceCatalog) Put(hash string, length int64) (id, path string, err 
 		id, path, ops, err = rc.resourceIncRefOps(hash, length)
 		return ops, err
 	}
-	txnRunner, err := txnRunner(rc.collection.Database)
-	if err != nil {
-		return "", "", err
-	}
+	txnRunner := txnRunner(rc.collection.Database)
 	if err = txnRunner.Run(buildTxn); err != nil {
 		return "", "", err
 	}
@@ -134,10 +131,7 @@ func (rc *resourceCatalog) UploadComplete(id, path string) error {
 		}
 		return ops, err
 	}
-	txnRunner, err := txnRunner(rc.collection.Database)
-	if err != nil {
-		return err
-	}
+	txnRunner := txnRunner(rc.collection.Database)
 	return txnRunner.Run(buildTxn)
 }
 
@@ -149,10 +143,7 @@ func (rc *resourceCatalog) Remove(id string) (wasDeleted bool, path string, err 
 		}
 		return ops, err
 	}
-	txnRunner, err := txnRunner(rc.collection.Database)
-	if err != nil {
-		return false, "", err
-	}
+	txnRunner := txnRunner(rc.collection.Database)
 	return wasDeleted, path, txnRunner.Run(buildTxn)
 }
 
