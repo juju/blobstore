@@ -4,10 +4,10 @@ go 1.25.7
 
 require (
 	github.com/juju/errors v1.0.0
-	github.com/juju/loggo/v2 v2.2.0
+	github.com/juju/loggo v1.0.0
 	github.com/juju/mgo/v3 v3.0.9
 	github.com/juju/testing v1.2.0
-	github.com/juju/txn/v3 v3.2.0
+	github.com/juju/txn/v3 v3.2.1
 	github.com/juju/utils/v3 v3.2.3
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 )
@@ -15,7 +15,7 @@ require (
 require (
 	github.com/juju/clock v1.1.1 // indirect
 	github.com/juju/collections v1.0.4 // indirect
-	github.com/juju/loggo v1.0.0 // indirect
+	github.com/juju/loggo/v2 v2.2.0 // indirect
 	github.com/juju/lru v1.0.0 // indirect
 	github.com/juju/mgo/v2 v2.0.2 // indirect
 	github.com/juju/retry v1.0.0 // indirect
