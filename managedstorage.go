@@ -308,7 +308,7 @@ func (ms *managedStorage) putResourceReference(bucketUUID, managedPath, resource
 }
 
 // Override for testing.
-var txnRunner = func(db *mgo.Database) (jujutxn.Runner, error) {
+var txnRunner = func(db *mgo.Database) jujutxn.Runner {
 	return jujutxn.NewRunner(jujutxn.RunnerParams{
 		Database:                  db,
 		TransactionCollectionName: "txns",
@@ -328,10 +328,7 @@ func (ms *managedStorage) putManagedResource(managedResource ManagedResource, re
 		return addManagedResourceOps, err
 	}
 
-	txnRunner, err := txnRunner(ms.db)
-	if err != nil {
-		return "", err
-	}
+	txnRunner := txnRunner(ms.db)
 	if err = txnRunner.Run(buildTxn); err != nil {
 		return "", errors.Annotate(err, "cannot update managed resource catalog")
 	}
@@ -358,10 +355,7 @@ func (ms *managedStorage) RemoveForBucket(bucketUUID, path string) (err error) {
 		resourceId, removeManagedResourceOps, err = ms.removeResourceTxn(managedPath)
 		return removeManagedResourceOps, err
 	}
-	txnRunner, err := txnRunner(ms.db)
-	if err != nil {
-		return err
-	}
+	txnRunner := txnRunner(ms.db)
 	if err := txnRunner.Run(buildTxn); err != nil {
 		if err == mgo.ErrNotFound {
 			return errors.NotFoundf("resource at path %q", managedPath)

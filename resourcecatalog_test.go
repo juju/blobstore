@@ -45,11 +45,9 @@ func (s *resourceCatalogSuite) SetUpTest(c *gc.C) {
 	s.rCatalog = blobstore.NewResourceCatalog(db)
 
 	// For testing, we need to ensure there's a single txnRunner for all operations.
-	var err error
-	s.txnRunner, err = txn.NewRunner(txn.RunnerParams{Database: db})
-	c.Assert(err, jc.ErrorIsNil)
-	txnRunnerFunc := func(db *mgo.Database) (txn.Runner, error) {
-		return s.txnRunner, nil
+	s.txnRunner = txn.NewRunner(txn.RunnerParams{Database: db})
+	txnRunnerFunc := func(db *mgo.Database) txn.Runner {
+		return s.txnRunner
 	}
 	s.PatchValue(blobstore.TxnRunner, txnRunnerFunc)
 }
